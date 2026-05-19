@@ -11,6 +11,7 @@ import java.net.BindException
 class AvatarServerManager {
 
     private var server: AvatarUploadServer? = null
+    private var boundPort: Int? = null
 
     companion object {
         private const val PORT_START = 8080
@@ -22,21 +23,17 @@ class AvatarServerManager {
      * Returns ServerInfo on success, null on failure.
      */
     suspend fun startServer(onImageReceived: (ByteArray) -> Unit): ServerInfo? = withContext(Dispatchers.IO) {
-        // First, get the local IP
         val ip = NetworkUtils.getLocalIpAddress()
-        if (ip == null) {
-            return@withContext null
-        }
 
-        // Try ports in range
         for (port in PORT_START..PORT_END) {
             try {
                 val avatarServer = AvatarUploadServer(port, onImageReceived)
                 avatarServer.start()
                 server = avatarServer
-                return@withContext ServerInfo(ip, port)
+                boundPort = port
+                val hostIp = ip ?: "127.0.0.1"
+                return@withContext ServerInfo(hostIp, port)
             } catch (e: BindException) {
-                // Port in use, try next
                 continue
             } catch (e: Exception) {
                 if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("AvatarServerManager", "Port binding failed", e)
@@ -44,9 +41,13 @@ class AvatarServerManager {
             }
         }
 
-        // All ports failed
         null
     }
+
+    /**
+     * Returns the bound port for adb reverse setup.
+     */
+    fun getPort(): Int? = boundPort
 
     /**
      * Stops the running server if any.
@@ -54,5 +55,6 @@ class AvatarServerManager {
     fun stopServer() {
         server?.stop()
         server = null
+        boundPort = null
     }
 }

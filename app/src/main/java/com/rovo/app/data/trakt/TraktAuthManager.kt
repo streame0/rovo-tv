@@ -146,12 +146,19 @@ class TraktAuthManager @Inject constructor(
     suspend fun startDeviceAuth() {
         _authState.value = DeviceAuthState.Idle
         try {
+            if (BuildConfig.TRAKT_CLIENT_ID.isBlank()) {
+                Log.e(TAG, "TRAKT_CLIENT_ID is not set in local.properties")
+                _authState.value = DeviceAuthState.Error("Trakt client ID is not configured (add TRAKT_CLIENT_ID to local.properties)")
+                return
+            }
             val response = traktApi.getDeviceCode(
                 mapOf("client_id" to BuildConfig.TRAKT_CLIENT_ID)
             )
             val body = response.body()
             if (!response.isSuccessful || body == null) {
-                _authState.value = DeviceAuthState.Error("Failed to get device code")
+                val errorBody = response.errorBody()?.string()
+                Log.e(TAG, "Failed to get device code: HTTP ${response.code()} $errorBody")
+                _authState.value = DeviceAuthState.Error("Failed to get device code (HTTP ${response.code()})")
                 return
             }
 

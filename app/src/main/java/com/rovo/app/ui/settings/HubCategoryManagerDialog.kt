@@ -274,24 +274,13 @@ fun HubCategoryManagerDialog(
             items = currentItems,
             shape = hubShape,
             onDismiss = { showBulkUpload = false },
-            onImageReceived = { configId, bytes ->
-                // Save to internal storage
-                val filename = "hub_item_${java.util.UUID.randomUUID()}.jpg"
-                try {
-                    context.openFileOutput(filename, android.content.Context.MODE_PRIVATE).use {
-                        it.write(bytes)
-                    }
-                    val path = context.getFileStreamPath(filename).absolutePath
-
-                    // Update item with new path in real-time
-                    val mutable = currentItems.toMutableList()
-                    val idx = mutable.indexOfFirst { it.configUniqueId == configId }
-                    if (idx != -1) {
-                        mutable[idx] = mutable[idx].copy(customImageUrl = path)
-                        currentItems = mutable
-                    }
-                } catch (e: Exception) {
-                    if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("HubCategoryManagerDialog", "Image upload error", e)
+            onImageReceived = { _, _ -> },
+            onImageUrlReceived = { configId, url ->
+                val mutable = currentItems.toMutableList()
+                val idx = mutable.indexOfFirst { it.configUniqueId == configId }
+                if (idx != -1) {
+                    mutable[idx] = mutable[idx].copy(customImageUrl = url)
+                    currentItems = mutable
                 }
             },
             onImageDeleted = { configId ->

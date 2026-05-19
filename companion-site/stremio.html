@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Connect Stremio</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0a0a0f">
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <div class="logo-icon">&#9889;</div>
+      <span class="logo-text">Stremio Connect</span>
+    </div>
+
+    <div id="form-step">
+      <h1>Connect Your Stremio Account</h1>
+      <p class="sub">Enter your Stremio credentials to sync your addons with Rovo</p>
+
+      <p class="error" id="errorMsg"></p>
+
+      <input type="email" id="emailInput" placeholder="Stremio Email" autocomplete="email" inputmode="email">
+      <input type="password" id="passwordInput" placeholder="Password" autocomplete="current-password">
+
+      <button id="connectBtn" class="primary" disabled>
+        Connect Account
+      </button>
+
+      <p class="link" id="countdown"></p>
+
+      <div class="info-box">
+        <span class="icon">&#128274;</span>
+        <p>Your credentials are sent securely to your TV. They are not stored on any server.</p>
+      </div>
+    </div>
+
+    <div id="success-step" style="display:none;">
+      <div class="success-animation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" opacity="0.3"/>
+          <path class="checkmark" d="M8 12l3 3 5-5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1>Connected!</h1>
+      <p class="sub">Your Stremio account is now linked. Check your TV to select addons to import.</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/session.js"></script>
+  <script>
+    const code = new URLSearchParams(window.location.search).get('code')
+    if (!code) {
+      document.getElementById('errorMsg').textContent = 'No session code provided'
+      document.getElementById('errorMsg').classList.add('show')
+      throw new Error('no code')
+    }
+
+    getSession(code).then(s => {
+      if (s.expires_at) startCountdown(s.expires_at, 'countdown')
+    }).catch(() => {})
+
+    const emailInput = document.getElementById('emailInput')
+    const passwordInput = document.getElementById('passwordInput')
+    const connectBtn = document.getElementById('connectBtn')
+    const errorMsg = document.getElementById('errorMsg')
+    const formStep = document.getElementById('form-step')
+    const successStep = document.getElementById('success-step')
+
+    function validate() {
+      connectBtn.disabled = !emailInput.value.trim() || !passwordInput.value
+    }
+
+    emailInput.addEventListener('input', validate)
+    passwordInput.addEventListener('input', validate)
+
+    connectBtn.addEventListener('click', async () => {
+      const email = emailInput.value.trim()
+      const password = passwordInput.value
+
+      if (!email || !password) {
+        errorMsg.textContent = 'Please enter your email and password'
+        errorMsg.classList.add('show')
+        return
+      }
+
+      connectBtn.disabled = true
+      connectBtn.innerHTML = '<span class="spinner"></span>Connecting...'
+      errorMsg.classList.remove('show')
+
+      try {
+        await updateSession(code, {
+          status: 'completed',
+          data: {
+            email: email,
+            password: password,
+            type: 'stremio'
+          }
+        })
+
+        successStep.style.display = 'block'
+        formStep.style.display = 'none'
+      } catch (e) {
+        errorMsg.textContent = 'Failed to send credentials. Please try again.'
+        errorMsg.classList.add('show')
+        connectBtn.disabled = false
+        connectBtn.innerHTML = 'Connect Account'
+      }
+    })
+
+    // Allow Enter to submit
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !connectBtn.disabled && formStep.style.display !== 'none') {
+        connectBtn.click()
+      }
+    })
+  </script>
+</body>
+</html>

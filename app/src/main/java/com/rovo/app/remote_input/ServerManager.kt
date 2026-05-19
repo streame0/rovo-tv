@@ -32,21 +32,15 @@ class ServerManager {
      * Returns ServerInfo on success, null on failure.
      */
     suspend fun startServer(onLinkReceived: (String) -> Unit): ServerInfo? = withContext(Dispatchers.IO) {
-        // First, get the local IP
         val ip = NetworkUtils.getLocalIpAddress()
-        if (ip == null) {
-            return@withContext null
-        }
 
-        // Try ports in range
         for (port in PORT_START..PORT_END) {
             try {
                 val linkServer = LinkServer(port, onLinkReceived)
                 linkServer.start()
                 server = linkServer
-                return@withContext ServerInfo(ip, port)
+                return@withContext ServerInfo(ip ?: "127.0.0.1", port)
             } catch (e: BindException) {
-                // Port in use, try next
                 continue
             } catch (e: Exception) {
                 if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("ServerManager", "Port binding failed", e)
@@ -54,7 +48,6 @@ class ServerManager {
             }
         }
 
-        // All ports failed
         null
     }
 

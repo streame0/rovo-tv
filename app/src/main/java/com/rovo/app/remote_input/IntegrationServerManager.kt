@@ -24,9 +24,6 @@ class IntegrationServerManager {
         onCredentialsReceived: (email: String, password: String) -> Unit
     ): ServerInfo? = withContext(Dispatchers.IO) {
         val ip = NetworkUtils.getLocalIpAddress()
-        if (ip == null) {
-            return@withContext null
-        }
 
         for (port in PORT_START..PORT_END) {
             try {
@@ -36,7 +33,7 @@ class IntegrationServerManager {
                 )
                 integrationServer.start()
                 server = integrationServer
-                return@withContext ServerInfo(ip, port)
+                return@withContext ServerInfo(ip ?: "127.0.0.1", port)
             } catch (e: BindException) {
                 continue
             } catch (e: Exception) {

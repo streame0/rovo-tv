@@ -55,10 +55,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.rovo.app.data.auth.StremioConnectionState
+import com.rovo.app.data.supabase.CompanionSessionManager
 import com.rovo.app.data.trakt.DeviceAuthState
-import com.rovo.app.remote_input.ServerInfo
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun IntegrationsScreen(
@@ -89,6 +91,17 @@ fun IntegrationsScreen(
                 is IntegrationsEvent.Disconnected -> {
                     Toast.makeText(context, "Disconnected from Stremio", Toast.LENGTH_SHORT).show()
                 }
+                is IntegrationsEvent.CloudAuthResult -> {
+                    Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                }
+                is IntegrationsEvent.CloudSyncComplete -> {
+                    val r = event.result
+                    Toast.makeText(
+                        context,
+                        "Synced: ${r.pushed} pushed, ${r.pulled} pulled${if (r.errors > 0) ", ${r.errors} errors" else ""}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
     }
@@ -113,6 +126,10 @@ fun IntegrationsScreen(
 
     var showTmdbSettings by remember { mutableStateOf(false) }
     var showTraktDialog by remember { mutableStateOf(false) }
+    var showCloudSyncDialog by remember { mutableStateOf(false) }
+    var showCloudLinkDialog by remember { mutableStateOf(false) }
+    var showCloudSignInDialog by remember { mutableStateOf(false) }
+    var showCloudSignUpDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -172,6 +189,23 @@ fun IntegrationsScreen(
             subtitle = if (state.traktConnected) "Connected" else "Not Connected",
             isConnected = state.traktConnected,
             onClick = { showTraktDialog = true },
+            modifier = goBackModifier
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        // Supabase Cloud Sync Item
+        val cloudConnected = state.cloudAuthState !is com.rovo.app.data.supabase.CloudAuthState.Unauthenticated
+        val cloudSubtitle = when (val cs = state.cloudAuthState) {
+            is com.rovo.app.data.supabase.CloudAuthState.Authenticated -> cs.email
+            is com.rovo.app.data.supabase.CloudAuthState.Anonymous -> "Sync Enabled (Anonymous)"
+            is com.rovo.app.data.supabase.CloudAuthState.Unauthenticated -> "Not Connected"
+        }
+        IntegrationItem(
+            title = "Cloud Sync",
+            subtitle = cloudSubtitle,
+            isConnected = cloudConnected,
+            onClick = { showCloudSyncDialog = true },
             modifier = goBackModifier
         )
     }
@@ -249,6 +283,212 @@ fun IntegrationsScreen(
             }
         )
     }
+
+    // ── Cloud Sync Dialog ──
+    if (showCloudSyncDialog) {
+        CloudSyncDialog(
+            state = state,
+            onDismiss = { showCloudSyncDialog = false },
+            onEnableAnonymous = { viewModel.enableCloudSync() },
+            onSignIn = { showCloudSyncDialog = false; showCloudSignInDialog = true },
+            onSignUp = { showCloudSyncDialog = false; showCloudSignUpDialog = true },
+            onDisconnect = { viewModel.disableCloudSync(); showCloudSyncDialog = false },
+            onSyncNow = { viewModel.runCloudSync() },
+            onLinkEmail = { showCloudSyncDialog = false; showCloudLinkDialog = true }
+        )
+    }
+
+    if (showCloudSignInDialog) {
+        CloudAuthDialog(
+            title = "Sign In",
+            isLoading = state.isLoading,
+            onDismiss = { showCloudSignInDialog = false },
+            onSubmit = { email, password ->
+                viewModel.signInToCloud(email, password)
+                showCloudSignInDialog = false
+            }
+        )
+    }
+
+    if (showCloudSignUpDialog) {
+        CloudAuthDialog(
+            title = "Create Account",
+            isLoading = state.isLoading,
+            onDismiss = { showCloudSignUpDialog = false },
+            isSignUp = true,
+            onSubmit = { email, password ->
+                viewModel.signUpForCloud(email, password)
+                showCloudSignUpDialog = false
+            }
+        )
+    }
+
+    if (showCloudLinkDialog) {
+        CloudAuthDialog(
+            title = "Link Email",
+            isLoading = state.isLoading,
+            onDismiss = { showCloudLinkDialog = false },
+            onSubmit = { email, password ->
+                viewModel.linkEmailToCloud(email, password)
+                showCloudLinkDialog = false
+            }
+        )
+    }
+}
+
+// =============================================================================
+// CLOUD SYNC DIALOG
+// =============================================================================
+
+@Composable
+private fun CloudSyncDialog(
+    state: IntegrationsUiState,
+    onDismiss: () -> Unit,
+    onEnableAnonymous: () -> Unit,
+    onSignIn: () -> Unit,
+    onSignUp: () -> Unit,
+    onDisconnect: () -> Unit,
+    onSyncNow: () -> Unit,
+    onLinkEmail: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val isConnected = state.cloudAuthState !is com.rovo.app.data.supabase.CloudAuthState.Unauthenticated
+    val isAnonymous = state.cloudAuthState is com.rovo.app.data.supabase.CloudAuthState.Anonymous
+
+    LaunchedEffect(Unit) {
+        delay(200)
+        runCatching { focusRequester.requestFocus() }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier
+                    .width(460.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.background)
+                    .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                    .padding(24.dp)
+            ) {
+                Text(
+                    "Cloud Sync",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White
+                )
+                Text(
+                    "Sync your watch progress, hubs, addons, and watchlist across devices.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                if (isConnected) {
+                    val cs = state.cloudAuthState
+                    val email = if (cs is com.rovo.app.data.supabase.CloudAuthState.Authenticated) cs.email else "Anonymous"
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Connected as $email", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    if (state.cloudLastSyncResult != null) {
+                        val result = state.cloudLastSyncResult
+                        Text(
+                            "Last sync: ${result.pushed} pushed, ${result.pulled} pulled${if (result.errors > 0) ", ${result.errors} errors" else ""}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                        Spacer(Modifier.height(16.dp))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        IntegrationButton(
+                            text = if (state.cloudIsSyncing) "Syncing..." else "Sync Now",
+                            onClick = onSyncNow,
+                            isPrimary = true,
+                            enabled = !state.cloudIsSyncing,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    if (isAnonymous) {
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            IntegrationButton(
+                                text = "Link Email",
+                                onClick = onLinkEmail,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    IntegrationButton(
+                        text = "Disconnect",
+                        onClick = onDisconnect,
+                        isDestructive = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        focusRequester = focusRequester
+                    )
+                } else {
+                    Text(
+                        "Enable cloud sync to keep your data in sync across all your devices. Your data is stored securely in the cloud.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(0.7f)
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        IntegrationButton(
+                            text = "Enable Anonymous Sync",
+                            onClick = onEnableAnonymous,
+                            isPrimary = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            focusRequester = focusRequester
+                        )
+                        IntegrationButton(
+                            text = "Sign In",
+                            onClick = onSignIn,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        IntegrationButton(
+                            text = "Create Account",
+                            onClick = onSignUp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                if (isConnected || !isConnected) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        IntegrationButton(
+                            text = "Close",
+                            onClick = onDismiss,
+                            modifier = Modifier.width(100.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -318,7 +558,7 @@ private fun IntegrationItem(
 }
 
 // =============================================================================
-// CONNECT STREMIO DIALOG (Split Layout: Manual + QR Code)
+// CONNECT STREMIO DIALOG (Companion Site via QR Code)
 // =============================================================================
 
 @Composable
@@ -327,162 +567,138 @@ private fun ConnectStremioDialog(
     onDismiss: () -> Unit,
     onLogin: (email: String, password: String) -> Unit
 ) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var serverInfo by remember { mutableStateOf<ServerInfo?>(null) }
+    var sessionCode by remember { mutableStateOf<String?>(null) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    
-    val emailFocusRequester = remember { FocusRequester() }
-    val serverManager = remember { com.rovo.app.remote_input.IntegrationServerManager() }
+    var error by remember { mutableStateOf<String?>(null) }
+    var statusMessage by remember { mutableStateOf("Starting...") }
+    val scope = rememberCoroutineScope()
+    val focusRequester = remember { FocusRequester() }
 
-    // Start server for QR code login
     LaunchedEffect(Unit) {
         delay(100)
-        emailFocusRequester.requestFocus()
-        
-        val info = serverManager.startServer { receivedEmail, receivedPassword ->
-            // Login with credentials received from phone
-            onLogin(receivedEmail, receivedPassword)
+        focusRequester.requestFocus()
+
+        val result = CompanionSessionManager.createSession("stremio")
+        if (result.isFailure) {
+            error = "Failed to create session: ${result.exceptionOrNull()?.message}"
+            return@LaunchedEffect
         }
-        
-        if (info != null) {
-            serverInfo = info
-            qrBitmap = generateQrCode(info.url)
+
+        val code = result.getOrThrow()
+        sessionCode = code
+        statusMessage = "Code: $code"
+
+        val url = "${CompanionSessionManager.BASE_URL}?code=$code"
+        qrBitmap = withContext(Dispatchers.IO) {
+            try {
+                val writer = QRCodeWriter()
+                val bitMatrix = writer.encode(url, BarcodeFormat.QR_CODE, 512, 512)
+                val width = bitMatrix.width
+                val height = bitMatrix.height
+                val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+                for (x in 0 until width) {
+                    for (y in 0 until height) {
+                        bmp.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+                    }
+                }
+                bmp
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        CompanionSessionManager.observeSession(code).collect { session ->
+            val data = session.data
+            val email = data?.get("email")?.toString()
+            val password = data?.get("password")?.toString()
+            val type = data?.get("type")?.toString()
+
+            if (session.status == "completed" && type == "stremio" && email != null && password != null) {
+                onLogin(email, password)
+                onDismiss()
+                return@collect
+            } else if (session.status == "expired") {
+                error = "Session expired. Please try again."
+            }
         }
     }
 
-    // Stop server when dialog closes
     DisposableEffect(Unit) {
         onDispose {
-            serverManager.stopServer()
+            sessionCode?.let {
+                scope.launch { CompanionSessionManager.deleteSession(it) }
+            }
         }
     }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            sessionCode?.let { scope.launch { CompanionSessionManager.deleteSession(it) } }
+            onDismiss()
+        },
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize(),
-            contentAlignment = Alignment.TopCenter
+            contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
-                    .padding(top = 65.dp)
-                    .width(900.dp)
+                    .width(420.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
                     .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
-                    .imePadding()
-                    .padding(horizontal = 32.dp, vertical = 24.dp)
+                    .padding(32.dp)
+                    .focusRequester(focusRequester)
+                    .focusable()
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(40.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // LEFT: Header + Manual Input
-                    Column(
-                        modifier = Modifier.weight(1.3f)
-                    ) {
-                        // Header
-                        Text(
-                            "Connect your Stremio account",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Visible,
-                            softWrap = false
-                        )
-                        Text(
-                            "Import your existing addons from Stremio",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.Gray,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Visible,
-                            softWrap = false
-                        )
-
-                        // Email & Password in a column for vertical layout
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            IntegrationTextField(
-                                value = email,
-                                onValueChange = { email = it },
-                                placeholder = "Email",
-                                keyboardType = KeyboardType.Email,
-                                focusRequester = emailFocusRequester,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            IntegrationTextField(
-                                value = password,
-                                onValueChange = { password = it },
-                                placeholder = "Password",
-                                isPassword = true,
-                                keyboardType = KeyboardType.Password,
-                                modifier = Modifier.fillMaxWidth(),
-                                onDone = {
-                                    if (email.isNotBlank() && password.isNotBlank() && !isLoading) {
-                                        onLogin(email, password)
-                                    }
-                                }
-                            )
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-
-                        // Buttons row
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            IntegrationButton(
-                                text = if (isLoading) "Connecting..." else "Connect",
-                                onClick = { onLogin(email, password) },
-                                enabled = email.isNotBlank() && password.isNotBlank() && !isLoading,
-                                isPrimary = true,
-                                modifier = Modifier.width(140.dp)
-                            )
-                        }
-                    }
-
-                    // Vertical Divider
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(160.dp)
-                            .background(Color.White.copy(0.1f))
+                    Text(
+                        "Connect Stremio",
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
                     )
 
-                    // RIGHT: QR Code (compact)
-                    Column(
-                        modifier = Modifier.weight(0.7f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            "Or Scan with Phone",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Visible,
-                            softWrap = false,
-                            textAlign = TextAlign.Center
-                        )
+                    Text(
+                        "Scan the QR code with your phone to connect your Stremio account.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 8.dp),
+                        textAlign = TextAlign.Center
+                    )
 
-                        Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(32.dp))
 
-                        if (qrBitmap != null && serverInfo != null) {
+                    when {
+                        error != null -> {
+                            Text(error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                            Spacer(Modifier.height(16.dp))
+                            IntegrationButton(
+                                text = "Dismiss",
+                                onClick = onDismiss,
+                                modifier = Modifier.width(100.dp),
+                                focusRequester = focusRequester
+                            )
+                        }
+                        isLoading -> {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text("Connected! Syncing addons...", color = Color.Gray)
+                        }
+                        qrBitmap != null && sessionCode != null -> {
                             Box(
                                 modifier = Modifier
-                                    .size(150.dp)
+                                    .size(200.dp)
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(Color.White)
-                                    .padding(4.dp)
+                                    .padding(3.dp)
                             ) {
                                 Image(
                                     bitmap = qrBitmap!!.asImageBitmap(),
@@ -491,36 +707,47 @@ private fun ConnectStremioDialog(
                                 )
                             }
 
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(24.dp))
 
                             Text(
-                                serverInfo!!.url,
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                color = Color.Gray,
-                                maxLines = 1,
-                                overflow = TextOverflow.Visible,
-                                softWrap = false,
-                                textAlign = TextAlign.Center
+                                "Or visit:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
                             )
-                        } else {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(40.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 3.dp
+                            Text(
+                                "${CompanionSessionManager.BASE_URL}?code=$sessionCode",
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    letterSpacing = 0.5.sp
+                                ),
+                                color = Color.White,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+
+                            Spacer(Modifier.height(16.dp))
+
+                            Text(
+                                "Enter code: $sessionCode",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+
+                            Text(
+                                "Waiting for phone...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(0.5f)
                             )
                         }
-                    }
-                }
-
-                // Loading overlay
-                if (isLoading) {
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(Color.Black.copy(0.5f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        else -> {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(statusMessage, color = Color.Gray)
+                        }
                     }
                 }
             }
@@ -1020,121 +1247,6 @@ private fun TmdbToggleItem(
                     .background(Color.White)
             )
         }
-    }
-}
-
-// =============================================================================
-// SHARED UI COMPONENTS
-// =============================================================================
-
-@Composable
-private fun IntegrationTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    modifier: Modifier = Modifier,
-    isPassword: Boolean = false,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    focusRequester: FocusRequester? = null,
-    onDone: (() -> Unit)? = null
-) {
-    var isFocused by remember { mutableStateOf(false) }
-
-    val borderBrush = if (isFocused) {
-        Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary))
-    } else {
-        SolidColor(Color.White.copy(0.1f))
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(50.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(0.5f))
-            .border(if (isFocused) 2.dp else 1.dp, borderBrush, RoundedCornerShape(8.dp))
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        if (value.isEmpty()) {
-            Text(placeholder, color = Color.Gray)
-        }
-
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            singleLine = true,
-            visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = keyboardType,
-                imeAction = if (onDone != null) ImeAction.Done else ImeAction.Next
-            ),
-            keyboardActions = KeyboardActions(
-                onDone = { onDone?.invoke() }
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
-                .onFocusChanged { isFocused = it.isFocused }
-        )
-    }
-}
-
-@Composable
-private fun IntegrationButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    isPrimary: Boolean = false,
-    isDestructive: Boolean = false,
-    enabled: Boolean = true,
-    focusRequester: FocusRequester? = null
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-
-    val scale by animateFloatAsState(if (isFocused && enabled) 1.05f else 1f)
-
-    val activeColor = when {
-        isDestructive -> Color.Red
-        else -> MaterialTheme.colorScheme.primary
-    }
-
-    val bgColor = if (!enabled) Color.White.copy(0.05f) else Color.White.copy(0.08f)
-
-    val textColor = when {
-        !enabled -> Color.White.copy(0.3f)
-        isFocused -> activeColor
-        isDestructive || isPrimary -> activeColor.copy(alpha = 0.95f)
-        else -> Color.White
-    }
-
-    val borderColor = when {
-        !enabled -> Color.White.copy(0.1f)
-        isFocused -> activeColor
-        isDestructive || isPrimary -> activeColor.copy(alpha = 0.75f)
-        else -> Color.White.copy(0.2f)
-    }
-
-    Box(
-        modifier = modifier
-            .height(50.dp)
-            .scale(scale)
-            .clip(RoundedCornerShape(8.dp))
-            .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
-            .then(if (enabled) Modifier.clickable(interactionSource = interactionSource, indication = null) { onClick() } else Modifier)
-            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
-            .then(if (enabled) Modifier.focusable(interactionSource = interactionSource) else Modifier),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text.uppercase(),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            color = textColor
-        )
     }
 }
 

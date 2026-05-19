@@ -104,7 +104,7 @@ fun AddonsScreen(
             true
         } else false
     }
-    
+
     // Block Up navigation when top nav is active
     val upBlockModifier = Modifier.onPreviewKeyEvent {
         if (it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown) {

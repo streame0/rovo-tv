@@ -9,6 +9,10 @@ import com.rovo.app.data.model.StremioAddonItem
 import com.rovo.app.data.profile.ProfileConfigurationManager
 import com.rovo.app.data.remote.StremioAuthError
 import com.rovo.app.data.repository.AddonRepository
+import com.rovo.app.data.supabase.CloudAuthState
+import com.rovo.app.data.supabase.SupabaseAuthManager
+import com.rovo.app.data.supabase.SupabaseSyncManager
+import com.rovo.app.data.supabase.SyncResult
 import com.rovo.app.data.trakt.DeviceAuthState
 import com.rovo.app.data.trakt.TraktAuthManager
 import com.rovo.app.data.trakt.TraktSyncManager
@@ -29,6 +33,8 @@ sealed class IntegrationsEvent {
     data class LoginError(val message: String) : IntegrationsEvent()
     data class SyncComplete(val count: Int) : IntegrationsEvent()
     object Disconnected : IntegrationsEvent()
+    data class CloudSyncComplete(val result: SyncResult) : IntegrationsEvent()
+    data class CloudAuthResult(val message: String) : IntegrationsEvent()
 }
 
 data class IntegrationsUiState(
@@ -38,7 +44,12 @@ data class IntegrationsUiState(
     val tmdbEnabled: Boolean = false,
     val tmdbLanguage: String = "",
     val traktConnected: Boolean = false,
-    val traktAuthState: DeviceAuthState = DeviceAuthState.Idle
+    val traktAuthState: DeviceAuthState = DeviceAuthState.Idle,
+
+    val cloudAuthState: CloudAuthState = CloudAuthState.Unauthenticated,
+    val cloudSyncEnabled: Boolean = false,
+    val cloudIsSyncing: Boolean = false,
+    val cloudLastSyncResult: SyncResult? = null
 )
 
 @HiltViewModel
@@ -48,7 +59,9 @@ class IntegrationsViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val dao: AddonDao,
     private val traktAuthManager: TraktAuthManager,
-    private val traktSyncManager: TraktSyncManager
+    private val traktSyncManager: TraktSyncManager,
+    private val supabaseAuthManager: SupabaseAuthManager,
+    private val supabaseSyncManager: SupabaseSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IntegrationsUiState())
@@ -58,7 +71,7 @@ class IntegrationsViewModel @Inject constructor(
     val events = _events.receiveAsFlow()
 
     init {
-        // Observe connection state
+        // Observe Stremio connection state
         viewModelScope.launch {
             stremioAuthManager.connectionState.collect { state ->
                 _uiState.value = _uiState.value.copy(connectionState = state)
@@ -73,10 +86,18 @@ class IntegrationsViewModel @Inject constructor(
         viewModelScope.launch {
             traktAuthManager.authState.collect { authState ->
                 _uiState.value = _uiState.value.copy(traktAuthState = authState)
-                // Push existing local watchlist + pull from Trakt after first auth
                 if (authState is DeviceAuthState.Success) {
                     traktSyncManager.initialSync()
                 }
+            }
+        }
+        // Observe Supabase auth state
+        viewModelScope.launch {
+            supabaseAuthManager.authState.collect { state ->
+                _uiState.value = _uiState.value.copy(
+                    cloudAuthState = state,
+                    cloudSyncEnabled = state !is CloudAuthState.Unauthenticated
+                )
             }
         }
         // Load TMDB settings from active profile
@@ -89,6 +110,10 @@ class IntegrationsViewModel @Inject constructor(
                     tmdbLanguage = profile.tmdbLanguage
                 )
             }
+        }
+        // Initialize Supabase session
+        viewModelScope.launch {
+            supabaseAuthManager.initialize()
         }
     }
 
@@ -258,5 +283,88 @@ class IntegrationsViewModel @Inject constructor(
 
     fun resetTraktAuthState() {
         traktAuthManager.resetAuthState()
+    }
+
+    // ── Supabase Cloud Sync ──
+
+    fun enableCloudSync() {
+        viewModelScope.launch {
+            val result = supabaseAuthManager.signInAnonymously()
+            result.fold(
+                onSuccess = {
+                    _events.send(IntegrationsEvent.CloudAuthResult("Cloud sync enabled"))
+                    supabaseSyncManager.fullSync()
+                },
+                onFailure = { e ->
+                    _events.send(IntegrationsEvent.CloudAuthResult("Failed: ${e.message}"))
+                }
+            )
+        }
+    }
+
+    fun signInToCloud(email: String, password: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val result = supabaseAuthManager.signIn(email, password)
+            _uiState.value = _uiState.value.copy(isLoading = false)
+            result.fold(
+                onSuccess = {
+                    _events.send(IntegrationsEvent.CloudAuthResult("Signed in to cloud"))
+                    supabaseSyncManager.fullSync()
+                },
+                onFailure = { e ->
+                    _events.send(IntegrationsEvent.CloudAuthResult("Sign in failed: ${e.message}"))
+                }
+            )
+        }
+    }
+
+    fun signUpForCloud(email: String, password: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val result = supabaseAuthManager.signUp(email, password)
+            _uiState.value = _uiState.value.copy(isLoading = false)
+            result.fold(
+                onSuccess = {
+                    _events.send(IntegrationsEvent.CloudAuthResult("Account created"))
+                    supabaseSyncManager.fullSync()
+                },
+                onFailure = { e ->
+                    _events.send(IntegrationsEvent.CloudAuthResult("Sign up failed: ${e.message}"))
+                }
+            )
+        }
+    }
+
+    fun linkEmailToCloud(email: String, password: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val result = supabaseAuthManager.linkEmail(email, password)
+            _uiState.value = _uiState.value.copy(isLoading = false)
+            result.fold(
+                onSuccess = {
+                    _events.send(IntegrationsEvent.CloudAuthResult("Email linked to account"))
+                },
+                onFailure = { e ->
+                    _events.send(IntegrationsEvent.CloudAuthResult("Linking failed: ${e.message}"))
+                }
+            )
+        }
+    }
+
+    fun disableCloudSync() {
+        viewModelScope.launch {
+            supabaseAuthManager.signOut()
+            _events.send(IntegrationsEvent.CloudAuthResult("Cloud sync disabled"))
+        }
+    }
+
+    fun runCloudSync() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(cloudIsSyncing = true)
+            val result = supabaseSyncManager.fullSync()
+            _uiState.value = _uiState.value.copy(cloudIsSyncing = false, cloudLastSyncResult = result)
+            _events.send(IntegrationsEvent.CloudSyncComplete(result))
+        }
     }
 }

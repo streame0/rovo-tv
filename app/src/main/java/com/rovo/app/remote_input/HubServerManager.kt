@@ -2,6 +2,7 @@ package com.rovo.app.remote_input
 
 import com.rovo.app.domain.HubShape
 import fi.iki.elonen.NanoHTTPD
+import java.net.BindException
 
 /**
  * Singleton manager for the Hub bulk image upload server.
@@ -11,42 +12,57 @@ import fi.iki.elonen.NanoHTTPD
 object HubServerManager {
 
     private var server: NanoHTTPD? = null
+    private var boundPort: Int? = null
+    private const val PORT_START = 8080
+    private const val PORT_END = 8090
 
     /**
-     * Start the Bulk Hub upload server.
+     * Start the Bulk Hub upload server with port hunting.
      *
      * @param items List of items to manage
      * @param shape The shape constraint for all items
-     * @param port Port to listen on
      * @param onImageReceived Callback when an image is uploaded for a specific ID
      * @return The URL string for QR code generation, or null on failure
      */
     fun startBulkServer(
         items: List<com.rovo.app.data.model.HubRowItemEntity>,
         shape: HubShape,
-        port: Int = 8085,
         onImageReceived: (String, ByteArray) -> Unit,
         onImageDeleted: ((String) -> Unit)? = null
     ): String? {
         stopServer()
 
-        return try {
-            server = HubBulkUploadServer(
-                port = port,
-                items = items,
-                shape = shape,
-                onImageReceived = onImageReceived,
-                onImageDeleted = onImageDeleted
-            )
-            server?.start()
+        val ip = NetworkUtils.getLocalIpAddress()
 
-            val ip = NetworkUtils.getLocalIpAddress()
-            if (ip != null) "http://$ip:$port" else null
-        } catch (e: Exception) {
-            if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("HubServerManager", "Server start failed", e)
-            null
+        for (port in PORT_START..PORT_END) {
+            try {
+                val newServer = HubBulkUploadServer(
+                    port = port,
+                    items = items,
+                    shape = shape,
+                    onImageReceived = onImageReceived,
+                    onImageDeleted = onImageDeleted
+                )
+                newServer.start()
+                server = newServer
+                boundPort = port
+                val hostIp = ip ?: "127.0.0.1"
+                return "http://$hostIp:$port"
+            } catch (e: BindException) {
+                continue
+            } catch (e: Exception) {
+                if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("HubServerManager", "Server start failed", e)
+                continue
+            }
         }
+
+        return null
     }
+
+    /**
+     * Returns the bound port for adb reverse setup.
+     */
+    fun getPort(): Int? = boundPort
 
     /**
      * Stop the Hub upload server.
@@ -54,6 +70,7 @@ object HubServerManager {
     fun stopServer() {
         server?.stop()
         server = null
+        boundPort = null
     }
 
 }

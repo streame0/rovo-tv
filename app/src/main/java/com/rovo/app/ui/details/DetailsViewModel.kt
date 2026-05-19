@@ -22,6 +22,7 @@ import com.rovo.app.data.tmdb.TmdbService
 import com.rovo.app.data.tmdb.TmdbVideoInfo
 import com.rovo.app.domain.AddonSubtitle
 import com.rovo.app.domain.episodeStreamId
+import com.rovo.app.data.supabase.SyncTriggerService
 import com.rovo.app.data.trakt.TraktSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.rovo.app.data.model.SeriesNextUpEntity
@@ -55,7 +56,8 @@ class DetailsViewModel @Inject constructor(
     private val streamSortingService: StreamSortingService,
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
-    private val traktSyncManager: TraktSyncManager
+    private val traktSyncManager: TraktSyncManager,
+    private val syncTrigger: SyncTriggerService
 ) : ViewModel() {
 
     /** Per-episode watch progress for the episodes sidebar. */
@@ -517,20 +519,20 @@ class DetailsViewModel @Inject constructor(
                 dao.deleteHistoryItem(itemId)
                 traktSyncManager.pushMovieUnwatched(itemId)
             } else {
-                dao.upsertHistory(
-                    WatchHistoryEntity(
-                        id = itemId,
-                        title = meta.name,
-                        poster = meta.poster,
-                        position = 0L,
-                        duration = 0L,
-                        lastWatched = System.currentTimeMillis(),
-                        type = "movie",
-                        watched = true,
-                        scrobbled = true
-                    )
+                val entry = WatchHistoryEntity(
+                    id = itemId,
+                    title = meta.name,
+                    poster = meta.poster,
+                    position = 0L,
+                    duration = 0L,
+                    lastWatched = System.currentTimeMillis(),
+                    type = "movie",
+                    watched = true,
+                    scrobbled = true
                 )
+                dao.upsertHistory(entry)
                 traktSyncManager.pushMovieWatched(itemId)
+                syncTrigger.watchProgressSaved(entry)
             }
             _state.value = _state.value.copy(
                 isMovieWatched = !isCurrentlyWatched,
@@ -559,21 +561,21 @@ class DetailsViewModel @Inject constructor(
             } else {
                 // Mark as watched: create a watched history entry
                 val playbackId = "$streamId:${episode.season}:${episode.episode}"
-                dao.upsertHistory(
-                    WatchHistoryEntity(
-                        id = playbackId,
-                        title = episode.title.takeIf { it.isNotBlank() && it != "Episode" }
-                            ?: "S${episode.season}:E${episode.episode} - ${meta.name}",
-                        poster = meta.poster,
-                        position = 0L,
-                        duration = 0L,
-                        lastWatched = System.currentTimeMillis(),
-                        type = "series",
-                        watched = true,
-                        scrobbled = true
-                    )
+                val entry = WatchHistoryEntity(
+                    id = playbackId,
+                    title = episode.title.takeIf { it.isNotBlank() && it != "Episode" }
+                        ?: "S${episode.season}:E${episode.episode} - ${meta.name}",
+                    poster = meta.poster,
+                    position = 0L,
+                    duration = 0L,
+                    lastWatched = System.currentTimeMillis(),
+                    type = "series",
+                    watched = true,
+                    scrobbled = true
                 )
+                dao.upsertHistory(entry)
                 traktSyncManager.pushEpisodeWatched(streamId, episode.season, episode.episode)
+                syncTrigger.watchProgressSaved(entry)
             }
 
             // Refresh the progress map and next-up entry
@@ -802,6 +804,7 @@ class DetailsViewModel @Inject constructor(
             if (dao.isInWatchlist(itemId)) {
                 dao.removeFromWatchlist(itemId)
                 traktSyncManager.pushRemove(itemId, meta.type)
+                syncTrigger.watchlistItemRemoved(itemId)
             } else {
                 val entity = WatchlistEntity(
                     id = itemId,
@@ -812,6 +815,7 @@ class DetailsViewModel @Inject constructor(
                 )
                 dao.addToWatchlist(entity)
                 traktSyncManager.pushAdd(entity)
+                syncTrigger.watchlistItemAdded(entity)
             }
         }
     }

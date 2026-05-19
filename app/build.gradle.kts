@@ -5,6 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
     // Apply the Compose Compiler plugin
     alias(libs.plugins.kotlin.compose)
+    // Kotlin serialization for Supabase DTOs
+    alias(libs.plugins.kotlin.serialization)
 
     id("kotlin-kapt")
     id("com.google.dagger.hilt.android")
@@ -21,6 +23,8 @@ val acraToken: String = localProperties.getProperty("acra.token", "")
 val tmdbApiKey: String = localProperties.getProperty("tmdb.api_key", "")
 val traktClientId: String = localProperties.getProperty("TRAKT_CLIENT_ID", "")
 val traktClientSecret: String = localProperties.getProperty("TRAKT_CLIENT_SECRET", "")
+val supabaseUrl: String = localProperties.getProperty("SUPABASE_URL", "")
+val supabaseAnonKey: String = localProperties.getProperty("SUPABASE_ANON_KEY", "")
 
 android {
     namespace = "com.rovo.app"
@@ -47,6 +51,10 @@ android {
         // Trakt API (loaded from local.properties)
         buildConfigField("String", "TRAKT_CLIENT_ID", "\"$traktClientId\"")
         buildConfigField("String", "TRAKT_CLIENT_SECRET", "\"$traktClientSecret\"")
+
+        // Supabase (loaded from local.properties)
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -133,6 +141,9 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
+    // Kotlinx Serialization (required by Supabase SDK)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
     // 4. Image Loading
     implementation("io.coil-kt:coil-compose:2.7.0")
 
@@ -176,5 +187,14 @@ dependencies {
     // --- CRASH REPORTING (ACRA) ---
     implementation("ch.acra:acra-http:5.11.4")
     implementation("ch.acra:acra-toast:5.11.4")
+
+    // --- SUPABASE CLOUD SYNC ---
+    implementation(platform(libs.supabase.bom))
+    implementation(libs.supabase.postgrest)
+    implementation(libs.supabase.gotrue)
+    implementation(libs.supabase.realtime)
+    implementation(libs.supabase.storage)
+    // Ktor engine for Supabase Ktor client
+    implementation("io.ktor:ktor-client-android:2.3.12")
 
 }

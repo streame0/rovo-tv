@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Rovo Companion</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <div class="logo-icon">&#9654;</div>
+      <span class="logo-text">Rovo Companion</span>
+    </div>
+    <h1>Connect to Your TV</h1>
+    <p class="sub">Enter the session code shown on your TV screen</p>
+
+    <input type="text" class="code-input" id="codeInput"
+           placeholder="XXXXXX" maxlength="6"
+           inputmode="text" autocomplete="off"
+           autocorrect="off" autocapitalize="characters"
+           spellcheck="false">
+
+    <p class="error" id="errorMsg"></p>
+
+    <button id="goBtn" disabled>Continue</button>
+
+    <p class="link" id="countdown"></p>
+
+    <div class="divider">or</div>
+
+    <button class="secondary" onclick="window.location.href='/?code=demo'">
+      How it works
+    </button>
+
+    <div class="info-box">
+      <span class="icon">&#9889;</span>
+      <p>Open the Rovo app on your Android TV and select any option that shows a QR code or session code. Then enter the code here.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/session.js"></script>
+  <script>
+    const codeInput = document.getElementById('codeInput')
+    const goBtn = document.getElementById('goBtn')
+    const errorMsg = document.getElementById('errorMsg')
+
+    codeInput.addEventListener('input', () => {
+      codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
+      goBtn.disabled = codeInput.value.length < 4
+      errorMsg.classList.remove('show')
+    })
+
+    codeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !goBtn.disabled) goBtn.click()
+    })
+
+    goBtn.addEventListener('click', async () => {
+      const code = codeInput.value.trim().toUpperCase()
+      if (!code || code.length < 4) return
+      goBtn.disabled = true
+      goBtn.innerHTML = '<span class="spinner"></span>Connecting...'
+      errorMsg.classList.remove('show')
+
+      try {
+        const session = await getSession(code)
+        if (session.status === 'expired') {
+          errorMsg.textContent = 'This session has expired. Please go back to the TV and generate a new code.'
+          errorMsg.classList.add('show')
+          goBtn.disabled = false
+          goBtn.innerHTML = 'Continue'
+          return
+        }
+
+        const pages = {
+          avatar: 'avatar.html',
+          hub: 'hub.html',
+          auth: 'auth.html',
+          stremio: 'stremio.html'
+        }
+        const page = pages[session.action]
+        if (page) {
+          window.location.href = `${page}?code=${code}`
+        } else {
+          errorMsg.textContent = 'Unknown session type'
+          errorMsg.classList.add('show')
+          goBtn.disabled = false
+          goBtn.innerHTML = 'Continue'
+        }
+      } catch (e) {
+        errorMsg.textContent = 'Invalid or expired session code. Check your TV screen and try again.'
+        errorMsg.classList.add('show')
+        goBtn.disabled = false
+        goBtn.innerHTML = 'Continue'
+      }
+    })
+
+    // Auto-submit if code is in URL params
+    const params = new URLSearchParams(window.location.search)
+    const codeParam = params.get('code')
+    if (codeParam) {
+      codeInput.value = codeParam.toUpperCase()
+      goBtn.disabled = false
+      getSession(codeParam).then(s => {
+        if (s.expires_at) startCountdown(s.expires_at, 'countdown')
+      }).catch(() => {})
+      goBtn.click()
+    }
+  </script>
+</body>
+</html>

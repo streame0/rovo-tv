@@ -17,7 +17,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -26,45 +25,50 @@ import androidx.compose.ui.window.Dialog
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.rovo.app.data.model.HubRowItemEntity
+import com.rovo.app.data.supabase.CompanionSessionManager
 import com.rovo.app.domain.HubShape
-import com.rovo.app.remote_input.HubServerManager
-import com.rovo.app.ui.addons.VoidButton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * Dialog to show QR code for Bulk Image Upload.
- * When an image is received, it triggers onImageReceived callback.
- * Unlike the single upload dialog, this one stays open until the user dismisses it,
- * allowing multiple uploads.
- */
 @Composable
 fun HubBulkUploadDialog(
     items: List<HubRowItemEntity>,
     shape: HubShape,
     onDismiss: () -> Unit,
-    onImageReceived: (String, ByteArray) -> Unit, // callback(configUniqueId, bytes)
-    onImageDeleted: ((String) -> Unit)? = null // callback(configUniqueId)
+    onImageReceived: (String, ByteArray) -> Unit,
+    onImageUrlReceived: ((String, String) -> Unit)? = null,
+    onImageDeleted: ((String) -> Unit)? = null
 ) {
-    var serverUrl by remember { mutableStateOf<String?>(null) }
+    var sessionCode by remember { mutableStateOf<String?>(null) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
 
-    // Start Server
+    val initialItems = remember(items, shape) {
+        items.map { item ->
+            mapOf<String, Any>(
+                "config_unique_id" to item.configUniqueId,
+                "title" to item.title,
+                "custom_image_url" to ""
+            )
+        }
+    }
+
     LaunchedEffect(Unit) {
-        // Start bulk server
-        val url = HubServerManager.startBulkServer(
-            items = items,
-            shape = shape,
-            onImageReceived = { id, bytes ->
-                onImageReceived(id, bytes)
-            },
-            onImageDeleted = onImageDeleted
+        val sessionData = mapOf<String, Any>(
+            "items" to initialItems,
+            "shape" to shape.name.lowercase()
         )
-        serverUrl = url
-        
-        // Generate QR
-        if (url != null) {
+        val result = CompanionSessionManager.createSession("hub", sessionData)
+        result.onSuccess { code ->
+            sessionCode = code
+            val url = "${CompanionSessionManager.BASE_URL}/hub.html?code=$code"
+
             withContext(Dispatchers.IO) {
                 try {
                     val writer = QRCodeWriter()
@@ -78,25 +82,66 @@ fun HubBulkUploadDialog(
                         }
                     }
                     qrBitmap = bmp
-                } catch (e: Exception) {
-                    if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("HubBulkUploadDialog", "QR generation error", e)
+                } catch (_: Exception) {}
+            }
+            isLoading = false
+        }.onFailure {
+            statusMessage = "Failed to create session: ${it.message}"
+            isLoading = false
+        }
+    }
+
+    val knownUrls = remember { mutableStateMapOf<String, String?>() }
+
+    LaunchedEffect(sessionCode) {
+        val code = sessionCode ?: return@LaunchedEffect
+        while (isActive) {
+            val session = CompanionSessionManager.pollSession(code)
+            if (session?.data != null) {
+                val itemsData = session.data["items"]
+                if (itemsData is List<*>) {
+                    @Suppress("UNCHECKED_CAST")
+                    val sessionItems = itemsData as List<Map<String, Any?>>
+                    for (item in sessionItems) {
+                        val configId = item["config_unique_id"] as? String ?: continue
+                        val currentUrl = item["custom_image_url"] as? String
+                        val lastKnownUrl = knownUrls[configId]
+
+                        if (currentUrl != null && currentUrl != lastKnownUrl && currentUrl.isNotEmpty()) {
+                            knownUrls[configId] = currentUrl
+                            onImageUrlReceived?.invoke(configId, currentUrl)
+                        } else if (currentUrl == null && lastKnownUrl != null) {
+                            knownUrls[configId] = null
+                            onImageDeleted?.invoke(configId)
+                        } else if (currentUrl != null && lastKnownUrl == null) {
+                            knownUrls[configId] = currentUrl
+                        }
+                    }
                 }
             }
+            delay(2000)
         }
     }
 
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(100)
+        delay(100)
         focusRequester.requestFocus()
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            HubServerManager.stopServer()
+            scope.launch {
+                sessionCode?.let { CompanionSessionManager.deleteSession(it) }
+            }
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = {
+        scope.launch {
+            sessionCode?.let { CompanionSessionManager.deleteSession(it) }
+        }
+        onDismiss()
+    }) {
         Box(
             modifier = Modifier
                 .width(420.dp)
@@ -115,7 +160,7 @@ fun HubBulkUploadDialog(
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
-                
+
                 Text(
                     text = "Scan to open the web portal on your phone.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -123,10 +168,23 @@ fun HubBulkUploadDialog(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 8.dp)
                 )
-                
+
                 Spacer(modifier = Modifier.height(32.dp))
-                
-                if (qrBitmap != null) {
+
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text("Creating session...", color = Color.Gray)
+                } else if (statusMessage != null) {
+                    Text(
+                        statusMessage!!,
+                        color = Color(0xFFef4444),
+                        textAlign = TextAlign.Center
+                    )
+                } else if (qrBitmap != null && sessionCode != null) {
                     Box(
                         modifier = Modifier
                             .size(200.dp)
@@ -142,34 +200,25 @@ fun HubBulkUploadDialog(
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
-                    
-                    if (serverUrl != null) {
-                        Text(
-                            "Or visit:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray
-                        )
-                        Text(
-                            serverUrl!!,
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                letterSpacing = 0.5.sp
-                            ),
-                            color = Color.White,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                } else {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(48.dp)
+
+                    Text(
+                        "Or visit:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
                     )
-                    Spacer(Modifier.height(16.dp))
-                    Text("Starting server...", color = Color.Gray)
+                    Text(
+                        "${CompanionSessionManager.BASE_URL}/hub.html?code=${sessionCode}",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = Color.White,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
-                
+
                 Text(
                     "Press Back to Finish",
                     style = MaterialTheme.typography.labelMedium,

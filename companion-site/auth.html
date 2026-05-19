@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Cloud Sync</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0a0a0f">
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <div class="logo-icon">&#9729;</div>
+      <span class="logo-text">Cloud Sync</span>
+    </div>
+
+    <div id="form-step">
+      <h1>Sign In to Your Account</h1>
+      <p class="sub">Sign in or create an account to sync your data across devices</p>
+
+      <div class="tabs">
+        <div class="tab active" id="tab-signin" onclick="switchTab('signin')">Sign In</div>
+        <div class="tab" id="tab-signup" onclick="switchTab('signup')">Create Account</div>
+      </div>
+
+      <p class="error" id="errorMsg"></p>
+
+      <div id="signin-form">
+        <input type="email" id="signin-email" placeholder="Email" autocomplete="email" inputmode="email">
+        <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password">
+        <button id="signinBtn" class="primary" disabled>Sign In</button>
+      </div>
+
+      <div id="signup-form" style="display:none;">
+        <input type="email" id="signup-email" placeholder="Email" autocomplete="email" inputmode="email">
+        <input type="password" id="signup-password" placeholder="Password" autocomplete="new-password">
+        <input type="password" id="signup-confirm" placeholder="Confirm Password" autocomplete="new-password">
+        <button id="signupBtn" class="primary" disabled>Create Account</button>
+      </div>
+
+      <p class="link" id="countdown"></p>
+      <p class="link">You can also connect as a guest from your TV and link an email later.</p>
+    </div>
+
+    <div id="success-step" style="display:none;">
+      <div class="success-animation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" opacity="0.3"/>
+          <path class="checkmark" d="M8 12l3 3 5-5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1>Signed In!</h1>
+      <p class="sub">Your cloud account is connected. You can close this page and return to the TV.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/session.js"></script>
+  <script>
+    const code = new URLSearchParams(window.location.search).get('code')
+    if (!code) {
+      document.getElementById('errorMsg').textContent = 'No session code'
+      document.getElementById('errorMsg').classList.add('show')
+      throw new Error('no code')
+    }
+
+    getSession(code).then(s => {
+      if (s.expires_at) startCountdown(s.expires_at, 'countdown')
+    }).catch(() => {})
+
+    const errorMsg = document.getElementById('errorMsg')
+    const formStep = document.getElementById('form-step')
+    const successStep = document.getElementById('success-step')
+
+    function switchTab(tab) {
+      document.getElementById('tab-signin').classList.toggle('active', tab === 'signin')
+      document.getElementById('tab-signup').classList.toggle('active', tab === 'signup')
+      document.getElementById('signin-form').style.display = tab === 'signin' ? 'block' : 'none'
+      document.getElementById('signup-form').style.display = tab === 'signup' ? 'block' : 'none'
+      errorMsg.classList.remove('show')
+    }
+
+    // Sign in validation
+    document.getElementById('signin-email').addEventListener('input', validateSignIn)
+    document.getElementById('signin-password').addEventListener('input', validateSignIn)
+    function validateSignIn() {
+      document.getElementById('signinBtn').disabled =
+        !document.getElementById('signin-email').value.trim() ||
+        !document.getElementById('signin-password').value
+    }
+
+    // Sign up validation
+    document.getElementById('signup-email').addEventListener('input', validateSignUp)
+    document.getElementById('signup-password').addEventListener('input', validateSignUp)
+    document.getElementById('signup-confirm').addEventListener('input', validateSignUp)
+    function validateSignUp() {
+      document.getElementById('signupBtn').disabled =
+        !document.getElementById('signup-email').value.trim() ||
+        !document.getElementById('signup-password').value ||
+        !document.getElementById('signup-confirm').value
+    }
+
+    async function doAuth(mode) {
+      const isSignIn = mode === 'signin'
+      const email = document.getElementById(isSignIn ? 'signin-email' : 'signup-email').value.trim()
+      const password = document.getElementById(isSignIn ? 'signin-password' : 'signup-password').value
+
+      if (!email || !password) {
+        errorMsg.textContent = 'Enter email and password'
+        errorMsg.classList.add('show')
+        return
+      }
+
+      if (!isSignIn) {
+        const confirm = document.getElementById('signup-confirm').value
+        if (password !== confirm) {
+          errorMsg.textContent = 'Passwords do not match'
+          errorMsg.classList.add('show')
+          return
+        }
+        if (password.length < 6) {
+          errorMsg.textContent = 'Password must be at least 6 characters'
+          errorMsg.classList.add('show')
+          return
+        }
+      }
+
+      const btn = document.getElementById(isSignIn ? 'signinBtn' : 'signupBtn')
+      btn.disabled = true
+      btn.innerHTML = '<span class="spinner dark"></span>' + (isSignIn ? 'Signing in...' : 'Creating account...')
+      errorMsg.classList.remove('show')
+
+      try {
+        if (isSignIn) {
+          const { error } = await supabase.auth.signInWithPassword({ email, password })
+          if (error) throw error
+        } else {
+          const { error } = await supabase.auth.signUp({ email, password })
+          if (error) throw error
+        }
+
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) throw new Error('No session returned')
+
+        await updateSession(code, {
+          status: 'completed',
+          data: {
+            email: email,
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+            user_id: session.user.id
+          }
+        })
+
+        formStep.style.display = 'none'
+        successStep.style.display = 'block'
+      } catch (e) {
+        errorMsg.textContent = e.message
+        errorMsg.classList.add('show')
+        btn.disabled = false
+        btn.innerHTML = isSignIn ? 'Sign In' : 'Create Account'
+      }
+    }
+
+    document.getElementById('signinBtn').addEventListener('click', () => doAuth('signin'))
+    document.getElementById('signupBtn').addEventListener('click', () => doAuth('signup'))
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const signinVisible = document.getElementById('signin-form').style.display !== 'none'
+        if (signinVisible && !document.getElementById('signinBtn').disabled) doAuth('signin')
+        else if (!signinVisible && !document.getElementById('signupBtn').disabled) doAuth('signup')
+      }
+    })
+  </script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 package com.rovo.app.di
 
+import com.rovo.app.BuildConfig
 import com.rovo.app.data.remote.StremioApiService
 import com.rovo.app.data.remote.IntroDbService
 import com.rovo.app.data.remote.TmdbApiService
@@ -11,6 +12,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
@@ -86,9 +88,16 @@ object NetworkModule {
     @Singleton
     @TraktRetrofit
     fun provideTraktRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        val client = okHttpClient.newBuilder().apply {
+            if (BuildConfig.DEBUG) {
+                addInterceptor(HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BODY
+                })
+            }
+        }.build()
         return Retrofit.Builder()
             .baseUrl("https://api.trakt.tv/")
-            .client(okHttpClient)
+            .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }
