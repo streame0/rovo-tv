@@ -51,7 +51,6 @@ enum class SettingsSection(val label: String, @DrawableRes val iconRes: Int) {
     Playback("Playback", R.drawable.playback_icon),
     SourcePreferences("Sort & Filter", R.drawable.source_preferences_icon),
     Addons("Addons", R.drawable.puzzle_icon),
-    Account("Account", R.drawable.cloud_icon),
     Integrations("Integrations", R.drawable.integrations_icon),
     About("About", R.drawable.info_icon)
 }
@@ -292,12 +291,6 @@ fun SettingsScreen(
                             AddonsScreen(
                                 onBack = { itemRequesters[selectedSection]?.requestFocus() },
                                 isTopNav = isTopNav
-                            )
-                        }
-                        SettingsSection.Account -> {
-                            AccountScreen(
-                                onBack = { itemRequesters[selectedSection]?.requestFocus() },
-                                currentProfile = currentProfile
                             )
                         }
                         SettingsSection.Integrations -> {

@@ -5,7 +5,10 @@ import java.io.File
 
 object ProfileAssets {
     // Prefix for custom uploaded avatars
-    private const val CUSTOM_PREFIX = "custom:"
+    const val CUSTOM_PREFIX = "custom:"
+    
+    // Directory name for custom avatars in internal storage
+    const val AVATARS_DIR = "avatars"
     
     // We map the "Safe String" to the "Unsafe ID"
     val AVATAR_MAP = mapOf(

@@ -27,6 +27,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import java.io.File
 
 @Composable
 fun CreateHubDialog(
@@ -96,11 +97,26 @@ fun CreateHubDialog(
     if (showManager) {
         HubCategoryManagerDialog(
             initialItems = addedItems,
-            hubShape = shape,
             onDismiss = { showManager = false },
             onSave = { updatedItems ->
                 addedItems = updatedItems
                 showManager = false
+            },
+            onImageUploaded = { _, file ->
+                // During creation, we save images to a temp location or a "pending" folder
+                // For now, let's just use the absolute path of the file which is already in hub_images if using the QR upload
+                // Actually, in CreateHubDialog we don't have a hubRowId yet.
+                // But the QR server saves to a temp file.
+                // Let's assume for now that if they upload during creation, we just move it to a "new_hub" prefix
+                val permanentFolder = File(context.filesDir, "hub_images").apply { if (!exists()) mkdirs() }
+                val permanentFile = File(permanentFolder, "pending_${System.currentTimeMillis()}.jpg")
+                try {
+                    file.copyTo(permanentFile, overwrite = true)
+                    file.delete()
+                    permanentFile.absolutePath
+                } catch (e: Exception) {
+                    null
+                }
             }
         )
     }

@@ -22,7 +22,6 @@ import com.rovo.app.data.tmdb.TmdbService
 import com.rovo.app.data.tmdb.TmdbVideoInfo
 import com.rovo.app.domain.AddonSubtitle
 import com.rovo.app.domain.episodeStreamId
-import com.rovo.app.data.supabase.SyncTriggerService
 import com.rovo.app.data.trakt.TraktSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.rovo.app.data.model.SeriesNextUpEntity
@@ -56,8 +55,7 @@ class DetailsViewModel @Inject constructor(
     private val streamSortingService: StreamSortingService,
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
-    private val traktSyncManager: TraktSyncManager,
-    private val syncTrigger: SyncTriggerService
+    private val traktSyncManager: TraktSyncManager
 ) : ViewModel() {
 
     /** Per-episode watch progress for the episodes sidebar. */
@@ -532,7 +530,6 @@ class DetailsViewModel @Inject constructor(
                 )
                 dao.upsertHistory(entry)
                 traktSyncManager.pushMovieWatched(itemId)
-                syncTrigger.watchProgressSaved(entry)
             }
             _state.value = _state.value.copy(
                 isMovieWatched = !isCurrentlyWatched,
@@ -575,7 +572,6 @@ class DetailsViewModel @Inject constructor(
                 )
                 dao.upsertHistory(entry)
                 traktSyncManager.pushEpisodeWatched(streamId, episode.season, episode.episode)
-                syncTrigger.watchProgressSaved(entry)
             }
 
             // Refresh the progress map and next-up entry
@@ -804,7 +800,6 @@ class DetailsViewModel @Inject constructor(
             if (dao.isInWatchlist(itemId)) {
                 dao.removeFromWatchlist(itemId)
                 traktSyncManager.pushRemove(itemId, meta.type)
-                syncTrigger.watchlistItemRemoved(itemId)
             } else {
                 val entity = WatchlistEntity(
                     id = itemId,
@@ -815,7 +810,6 @@ class DetailsViewModel @Inject constructor(
                 )
                 dao.addToWatchlist(entity)
                 traktSyncManager.pushAdd(entity)
-                syncTrigger.watchlistItemAdded(entity)
             }
         }
     }

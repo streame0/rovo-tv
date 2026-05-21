@@ -886,10 +886,11 @@ fun DashboardEditorScreen(
                 manageCategoriesFocusRequester = manageCategoriesFocusRequester
             )
 
+            val uploadedImageItems = remember { mutableSetOf<String>() }
+
             if (showHubCategoryManager) {
                 HubCategoryManagerDialog(
                     initialItems = currentItems,
-                    hubShape = editShape,
                     onDismiss = { showHubCategoryManager = false },
                     onSave = { updatedItems ->
                         val newIds = updatedItems.map { it.configUniqueId }.toSet()
@@ -900,12 +901,30 @@ fun DashboardEditorScreen(
                             viewModel.removeCategoryFromHubRow(currentHub.id, id)
                         }
 
-                        viewModel.updateHubRowItemsOrder(currentHub.id, updatedItems)
+                        // Preserve DB-stored image paths for items that had images uploaded
+                        // (handleHubItemImageUpload already saved the permanent path)
+                        val freshHub = hubRows.find { it.hub.id == currentHub.id }
+                        val dbItems = freshHub?.items?.associateBy { it.configUniqueId } ?: emptyMap()
+                        val mergedItems = updatedItems.map { item ->
+                            if (item.configUniqueId in uploadedImageItems) {
+                                val dbItem = dbItems[item.configUniqueId]
+                                if (dbItem?.customImageUrl != null) {
+                                    item.copy(customImageUrl = dbItem.customImageUrl)
+                                } else {
+                                    item
+                                }
+                            } else {
+                                item
+                            }
+                        }
+
+                        viewModel.updateHubRowItemsOrder(currentHub.id, mergedItems)
 
                         updatedItems.forEach { newItem ->
                             val oldItem =
                                 currentItems.find { it.configUniqueId == newItem.configUniqueId }
-                            if (oldItem != null && newItem.customImageUrl != oldItem.customImageUrl) {
+                            if (oldItem != null && newItem.customImageUrl != oldItem.customImageUrl
+                                && newItem.configUniqueId !in uploadedImageItems) {
                                 viewModel.updateHubItemImage(
                                     currentHub.id,
                                     newItem.configUniqueId,
@@ -915,6 +934,13 @@ fun DashboardEditorScreen(
                         }
 
                         showHubCategoryManager = false
+                    },
+                    onImageUploaded = { configUniqueId, file ->
+                        val newPath = viewModel.uploadHubItemImage(currentHub.id, configUniqueId, file, context)
+                        if (newPath != null) {
+                            uploadedImageItems.add(configUniqueId)
+                        }
+                        newPath
                     }
                 )
             }
@@ -947,6 +973,18 @@ fun DashboardEditorScreen(
                             selectedManageItem!!.configUniqueId,
                             null
                         )
+                    },
+                    onImageUploaded = { file ->
+                        val newPath = viewModel.uploadHubItemImage(
+                            currentHub.id,
+                            selectedManageItem!!.configUniqueId,
+                            file,
+                            context
+                        )
+                        if (newPath != null) {
+                            uploadedImageItems.add(selectedManageItem!!.configUniqueId)
+                        }
+                        newPath
                     }
                 )
             }

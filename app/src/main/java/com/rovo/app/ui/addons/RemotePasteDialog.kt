@@ -25,6 +25,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalContext
+import com.rovo.app.remote_input.NetworkUtils
 import com.rovo.app.remote_input.ServerInfo
 import com.rovo.app.remote_input.ServerManager
 import kotlinx.coroutines.delay
@@ -42,8 +45,12 @@ fun RemotePasteDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
-    val serverManager = remember { ServerManager() }
+    val context = LocalContext.current
+    val serverManager = remember { ServerManager(context) }
     val focusRequester = remember { FocusRequester() }
+
+    var showDebugInput by remember { mutableStateOf(false) }
+    var debugUrlInput by remember { mutableStateOf(NetworkUtils.debugTunnelUrl ?: "") }
 
     // Start server when dialog opens
     LaunchedEffect(Unit) {
@@ -61,6 +68,13 @@ fun RemotePasteDialog(
             qrBitmap = generateQrCode(info.url)
         } else {
             error = "Could not start server. Check your network connection."
+        }
+    }
+
+    // Refresh QR if debug URL changes
+    LaunchedEffect(NetworkUtils.debugTunnelUrl) {
+        serverInfo?.let {
+            qrBitmap = generateQrCode(it.url)
         }
     }
 
@@ -94,6 +108,27 @@ fun RemotePasteDialog(
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
+
+                if (NetworkUtils.isEmulator()) {
+                    Text(
+                        "Emulator Detected - Use Tunnel",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { showDebugInput = !showDebugInput }
+                    )
+
+                    if (showDebugInput) {
+                        VoidInput(
+                            value = debugUrlInput,
+                            onValueChange = {
+                                debugUrlInput = it
+                                NetworkUtils.debugTunnelUrl = it.ifBlank { null }
+                            },
+                            placeholder = "Paste localtunnel URL here",
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
                 
                 Text(
                     "Scan with your phone to paste a URL",

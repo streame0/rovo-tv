@@ -12,7 +12,10 @@ import com.rovo.app.data.model.HubRowItemEntity
 import com.rovo.app.ui.addons.VoidButton
 import com.rovo.app.ui.addons.VoidDialog
 import com.rovo.app.ui.addons.VoidInput
+import com.rovo.app.ui.addons.ImageUploadDialog
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.io.File
 
 @Composable
 fun HubItemManageDialog(
@@ -22,6 +25,7 @@ fun HubItemManageDialog(
     onStartReorder: () -> Unit,
     onRemove: () -> Unit,
     onRemoveImage: () -> Unit,
+    onImageUploaded: suspend (File) -> String?,
     showRenameOption: Boolean = true,
     showImageOption: Boolean = true
 ) {
@@ -29,9 +33,12 @@ fun HubItemManageDialog(
     var editName by remember { mutableStateOf(item.title) }
     var showRemoveConfirm by remember { mutableStateOf(false) }
     var showRemoveImageConfirm by remember { mutableStateOf(false) }
+    var showUploadDialog by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
 
     // Main Manage Dialog
-    if (!showRenameDialog && !showRemoveConfirm && !showRemoveImageConfirm) {
+    if (!showRenameDialog && !showRemoveConfirm && !showRemoveImageConfirm && !showUploadDialog) {
         val focusRequester = remember { FocusRequester() }
         LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
 
@@ -47,6 +54,12 @@ fun HubItemManageDialog(
             // Move
             VoidButton("Move Item", onStartReorder, Modifier.fillMaxWidth(), focusRequester = if (!showRenameOption) focusRequester else null)
             Spacer(Modifier.height(12.dp))
+
+            // Upload Image
+            if (showImageOption) {
+                VoidButton("Upload Custom Image", { showUploadDialog = true }, Modifier.fillMaxWidth())
+                Spacer(Modifier.height(12.dp))
+            }
 
             // Remove Image (only shown when item has an image)
             if (showImageOption && item.customImageUrl != null) {
@@ -72,6 +85,19 @@ fun HubItemManageDialog(
                 VoidButton("Close", onDismiss, Modifier.width(120.dp))
             }
         }
+    }
+
+    if (showUploadDialog) {
+        ImageUploadDialog(
+            onDismissRequest = { showUploadDialog = false },
+            onImageUploaded = { file ->
+                scope.launch {
+                    onImageUploaded(file)
+                    showUploadDialog = false
+                    onDismiss()
+                }
+            }
+        )
     }
 
     if (showRemoveImageConfirm) {

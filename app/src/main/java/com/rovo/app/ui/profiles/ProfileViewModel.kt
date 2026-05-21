@@ -11,6 +11,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
@@ -82,6 +84,39 @@ class ProfileViewModel @Inject constructor(
     fun setWizardAvatar(avatarKey: String) {
         tempAvatarRef = avatarKey
         _wizardStep.value = 3
+    }
+
+    /**
+     * Handles custom avatar upload from ImageUploadDialog.
+     * Moves the file to the secure internal /avatars folder and updates tempAvatarRef.
+     */
+    fun handleAvatarUpload(tempFile: File, context: android.content.Context) {
+        viewModelScope.launch {
+            val avatarsDir = File(context.filesDir, ProfileAssets.AVATARS_DIR).apply {
+                if (!exists()) mkdirs()
+            }
+
+            // Generate a unique filename to avoid collisions
+            val fileName = "avatar_${System.currentTimeMillis()}.png"
+            val targetFile = File(avatarsDir, fileName)
+
+            withContext(Dispatchers.IO) {
+                try {
+                    tempFile.copyTo(targetFile, overwrite = true)
+                    tempFile.delete() // Clean up temp file
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            if (targetFile.exists()) {
+                // Update tempAvatarRef with the custom path
+                tempAvatarRef = "${ProfileAssets.CUSTOM_PREFIX}${targetFile.absolutePath}"
+                // Proceed to next step automatically or let user confirm? 
+                // Usually for uploads, we proceed or show it's selected.
+                _wizardStep.value = 3 
+            }
+        }
     }
 
     fun setWizardTheme(themeId: String) {

@@ -2,54 +2,44 @@ package com.rovo.app.remote_input
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.net.BindException
 
 /**
- * Manages the IntegrationServer lifecycle for Stremio login.
+ * Manages the remote pairing session for Stremio login.
+ * Replaces the local IntegrationServer with a cloud-hosted pairing service.
  */
-class IntegrationServerManager {
+class IntegrationServerManager(private val context: android.content.Context) {
 
-    private var server: IntegrationServer? = null
-
-    companion object {
-        private const val PORT_START = 8080
-        private const val PORT_END = 8090
-    }
+    private var remoteClient: RemoteIntegrationClient? = null
 
     /**
-     * Attempts to start the server on an available port.
-     * Returns ServerInfo on success, null on failure.
+     * Creates a remote pairing session on the Rovo server.
+     * Returns [ServerInfo] with the pairing URL for QR code generation.
      */
     suspend fun startServer(
         onCredentialsReceived: (email: String, password: String) -> Unit
     ): ServerInfo? = withContext(Dispatchers.IO) {
-        val ip = NetworkUtils.getLocalIpAddress()
+        try {
+            val client = RemoteIntegrationClient()
+            val session = client.createSession() ?: return@withContext null
 
-        for (port in PORT_START..PORT_END) {
-            try {
-                val integrationServer = IntegrationServer(
-                    port = port,
-                    onCredentialsReceived = onCredentialsReceived
-                )
-                integrationServer.start()
-                server = integrationServer
-                return@withContext ServerInfo(ip ?: "127.0.0.1", port)
-            } catch (e: BindException) {
-                continue
-            } catch (e: Exception) {
-                if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("IntegrationServerManager", "Port binding failed", e)
-                continue
+            client.startPolling { email, password ->
+                onCredentialsReceived(email, password)
             }
-        }
+            remoteClient = client
 
-        null
+            ServerInfo(
+                ip = "",
+                port = 0,
+                pairingUrl = session.pairingUrl
+            )
+        } catch (e: Exception) {
+            if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("IntegrationServerManager", "Failed to start remote session", e)
+            null
+        }
     }
 
-    /**
-     * Stops the running server if any.
-     */
     fun stopServer() {
-        server?.stop()
-        server = null
+        remoteClient?.stopPolling()
+        remoteClient = null
     }
 }

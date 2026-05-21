@@ -4,8 +4,6 @@ plugins {
     alias(libs.plugins.kotlin.android) apply false
     // Apply the new compose plugin
     alias(libs.plugins.kotlin.compose) apply false
-    // Kotlin serialization (for Supabase DTOs)
-    alias(libs.plugins.kotlin.serialization) apply false
 
     // Hilt (still manual as it is not in the plugin block of toml yet)
     id("com.google.dagger.hilt.android") version "2.51.1" apply false

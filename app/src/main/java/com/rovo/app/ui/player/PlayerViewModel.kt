@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rovo.app.data.local.AddonDao
 import com.rovo.app.data.model.WatchHistoryEntity
-import com.rovo.app.data.supabase.SyncTriggerService
 import com.rovo.app.data.trakt.TraktScrobbleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -18,8 +17,7 @@ private const val WATCHED_THRESHOLD = 0.90 // 90% — above Trakt's 80% minimum
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val dao: AddonDao,
-    private val traktScrobbleManager: TraktScrobbleManager,
-    private val syncTrigger: SyncTriggerService
+    private val traktScrobbleManager: TraktScrobbleManager
 ) : ViewModel() {
 
     fun saveProgress(
@@ -58,7 +56,6 @@ class PlayerViewModel @Inject constructor(
                 scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
             )
             dao.upsertHistory(entry)
-            syncTrigger.watchProgressSaved(entry)
         }
     }
 
@@ -68,7 +65,6 @@ class PlayerViewModel @Inject constructor(
             if (existing != null) {
                 val updated = existing.copy(watched = true, lastWatched = System.currentTimeMillis())
                 dao.upsertHistory(updated)
-                syncTrigger.watchProgressSaved(updated)
             }
         }
     }

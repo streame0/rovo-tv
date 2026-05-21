@@ -12,7 +12,6 @@ import com.rovo.app.data.model.HubRowItemEntity
 import com.rovo.app.data.model.WatchHistoryEntity
 import com.rovo.app.data.model.stremio.CatalogManifest
 import com.rovo.app.data.repository.AddonRepository
-import com.rovo.app.data.supabase.SyncTriggerService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.firstOrNull
 import java.io.File
@@ -32,8 +31,7 @@ class ProfileConfigurationManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dao: AddonDao,
     private val stremioAuthManager: StremioAuthManager,
-    private val addonRepository: AddonRepository,
-    private val syncTrigger: SyncTriggerService
+    private val addonRepository: AddonRepository
 ) {
     companion object {
         private const val PREFS_FILE = "profile_configuration_prefs"
@@ -84,7 +82,6 @@ class ProfileConfigurationManager @Inject constructor(
     suspend fun saveActiveRuntimeState() {
         val activeId = getLastActiveProfileId() ?: return
         saveRuntimeState(activeId)
-        syncTrigger.triggerFullSync()
     }
 
     suspend fun loadRuntimeState(profileId: Int) {

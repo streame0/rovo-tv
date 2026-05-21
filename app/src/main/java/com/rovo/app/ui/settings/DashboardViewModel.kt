@@ -22,8 +22,10 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Collections
 import java.util.UUID
+import java.io.File
 import javax.inject.Inject
 
 sealed interface EditorListItem {
@@ -66,6 +68,27 @@ class DashboardViewModel @Inject constructor(
 
     private fun persistProfileState() {
         viewModelScope.launch { profileConfigurationManager.saveActiveRuntimeState() }
+    }
+
+    suspend fun uploadHubItemImage(hubRowId: String, configUniqueId: String, file: File, context: android.content.Context): String? = withContext(Dispatchers.IO) {
+        val permanentFolder = File(context.filesDir, "hub_images").apply { if (!exists()) mkdirs() }
+        val permanentFile = File(permanentFolder, "hub_${hubRowId}_${configUniqueId}_${System.currentTimeMillis()}.jpg")
+        try {
+            file.copyTo(permanentFile, overwrite = true)
+            dao.updateHubItemImage(hubRowId, configUniqueId, permanentFile.absolutePath)
+            persistProfileState()
+            file.delete()
+            permanentFile.absolutePath
+        } catch (e: Exception) {
+            if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.e("DashboardViewModel", "Failed to save hub image", e)
+            null
+        }
+    }
+
+    fun handleHubItemImageUpload(hubRowId: String, configUniqueId: String, file: File, context: android.content.Context) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            uploadHubItemImage(hubRowId, configUniqueId, file, context)
+        }
     }
 
     private val _configs = MutableStateFlow<List<CatalogConfigEntity>>(emptyList())

@@ -4,43 +4,39 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import com.rovo.app.data.model.HubRowItemEntity
 import com.rovo.app.domain.HubShape
+import com.rovo.app.ui.addons.ImageUploadDialog
 import com.rovo.app.ui.addons.VoidButton
 import com.rovo.app.ui.addons.VoidDialog
-import androidx.compose.ui.focus.focusRequester
 import com.rovo.app.ui.addons.VoidInput
+import androidx.compose.ui.focus.focusRequester
 import kotlinx.coroutines.delay
+import java.io.File
 
 @Composable
 fun HubCategoryManagerDialog(
     initialItems: List<HubRowItemEntity>,
-    hubShape: HubShape,
     onDismiss: () -> Unit,
-    onSave: (List<HubRowItemEntity>) -> Unit
+    onSave: (List<HubRowItemEntity>) -> Unit,
+    onImageUploaded: (suspend (configUniqueId: String, file: File) -> String?)? = null
 ) {
     // Local mutable list for reordering/removals
     var currentItems by remember { mutableStateOf(initialItems) }
     var reorderingItem by remember { mutableStateOf<HubRowItemEntity?>(null) }
     var managingItem by remember { mutableStateOf<HubRowItemEntity?>(null) }
-    var showBulkUpload by remember { mutableStateOf(false) }
     var renameItem by remember { mutableStateOf<HubRowItemEntity?>(null) }
     var newRenameName by remember { mutableStateOf("") }
     var confirmRemoveItem by remember { mutableStateOf<HubRowItemEntity?>(null) }
     var confirmRemoveImageItem by remember { mutableStateOf<HubRowItemEntity?>(null) }
+    var showUploadImageDialog by remember { mutableStateOf<HubRowItemEntity?>(null) }
 
     val focusRequester = remember { FocusRequester() }
     val saveFocusRequester = remember { FocusRequester() }
@@ -102,22 +98,6 @@ fun HubCategoryManagerDialog(
 
             Spacer(Modifier.height(16.dp))
 
-            // Bulk Upload Button
-            VoidButton(
-                text = "Manage Images",
-                onClick = {
-                    showBulkUpload = true
-                },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).onPreviewKeyEvent {
-                    if (it.key == Key.DirectionDown && it.type == KeyEventType.KeyDown) {
-                        saveFocusRequester.requestFocus()
-                        true
-                    } else false
-                }
-            )
-
-            Spacer(Modifier.height(16.dp))
-
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 VoidButton("Cancel", onDismiss, Modifier.weight(1f))
                 VoidButton("Save Changes", {
@@ -126,6 +106,29 @@ fun HubCategoryManagerDialog(
             }
         }
     } else if (managingItem != null && confirmRemoveItem == null && confirmRemoveImageItem == null && renameItem == null) {
+        if (showUploadImageDialog != null) {
+            ImageUploadDialog(
+                onDismissRequest = { showUploadImageDialog = null },
+                onImageUploaded = { file ->
+                    val item = showUploadImageDialog
+                    if (item != null && onImageUploaded != null) {
+                        scope.launch {
+                            val newPath = onImageUploaded(item.configUniqueId, file)
+                            if (newPath != null) {
+                                val mutable = currentItems.toMutableList()
+                                val idx = mutable.indexOfFirst { it.configUniqueId == item.configUniqueId }
+                                if (idx != -1) {
+                                    mutable[idx] = mutable[idx].copy(customImageUrl = newPath)
+                                    currentItems = mutable
+                                }
+                            }
+                        }
+                    }
+                    showUploadImageDialog = null
+                }
+            )
+        }
+
         // Item Actions Dialog (Move, Remove, Remove Image)
         VoidDialog(onDismissRequest = { managingItem = null }, title = managingItem?.title ?: "Item Options") {
              VoidButton("Rename", {
@@ -142,6 +145,15 @@ fun HubCategoryManagerDialog(
              }, Modifier.fillMaxWidth())
 
              Spacer(Modifier.height(12.dp))
+
+             // Upload Image
+             if (onImageUploaded != null) {
+                 VoidButton("Upload Custom Image", {
+                     showUploadImageDialog = managingItem
+                 }, Modifier.fillMaxWidth())
+
+                 Spacer(Modifier.height(12.dp))
+             }
 
              // Remove Image (only shown when item has a custom image)
              if (managingItem?.customImageUrl != null) {
@@ -244,7 +256,7 @@ fun HubCategoryManagerDialog(
         LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
 
         VoidDialog(onDismissRequest = { renameItem = null }, title = "Rename Item") {
-            com.rovo.app.ui.addons.VoidInput(
+            VoidInput(
                 value = newRenameName,
                 onValueChange = { newRenameName = it },
                 placeholder = "Item Name",
@@ -267,30 +279,5 @@ fun HubCategoryManagerDialog(
         }
     }
 
-    // Bulk Upload Dialog Logic
-    if (showBulkUpload) {
-        val context = androidx.compose.ui.platform.LocalContext.current
-        com.rovo.app.ui.home.HubBulkUploadDialog(
-            items = currentItems,
-            shape = hubShape,
-            onDismiss = { showBulkUpload = false },
-            onImageReceived = { _, _ -> },
-            onImageUrlReceived = { configId, url ->
-                val mutable = currentItems.toMutableList()
-                val idx = mutable.indexOfFirst { it.configUniqueId == configId }
-                if (idx != -1) {
-                    mutable[idx] = mutable[idx].copy(customImageUrl = url)
-                    currentItems = mutable
-                }
-            },
-            onImageDeleted = { configId ->
-                val mutable = currentItems.toMutableList()
-                val idx = mutable.indexOfFirst { it.configUniqueId == configId }
-                if (idx != -1) {
-                    mutable[idx] = mutable[idx].copy(customImageUrl = null)
-                    currentItems = mutable
-                }
-            }
-        )
-    }
+
 }

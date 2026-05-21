@@ -3,56 +3,45 @@ package com.rovo.app.remote_input
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.BindException
 
 /**
- * Manages the ImageUploadServer lifecycle.
+ * Manages the remote pairing session for image uploads.
+ * Replaces the local ImageUploadServer with a cloud-hosted pairing service.
  */
-class ImageUploadServerManager {
+class ImageUploadServerManager(private val context: android.content.Context) {
 
-    private var server: ImageUploadServer? = null
-
-    companion object {
-        private const val PORT_START = 8080
-        private const val PORT_END = 8090
-    }
+    private var remoteClient: RemoteImageUploadClient? = null
 
     /**
-     * Attempts to start the server on an available port.
-     * Returns ServerInfo on success, null on failure.
+     * Creates a remote pairing session on the Rovo server.
+     * Returns [ServerInfo] with the pairing URL for QR code generation.
      */
     suspend fun startServer(
         tempFolder: File,
         onImageUploaded: (File) -> Unit
     ): ServerInfo? = withContext(Dispatchers.IO) {
-        val ip = NetworkUtils.getLocalIpAddress()
+        try {
+            val client = RemoteImageUploadClient()
+            val session = client.createSession() ?: return@withContext null
 
-        for (port in PORT_START..PORT_END) {
-            try {
-                val imageServer = ImageUploadServer(
-                    port = port,
-                    tempFolder = tempFolder,
-                    onImageUploaded = onImageUploaded
-                )
-                imageServer.start()
-                server = imageServer
-                return@withContext ServerInfo(ip ?: "127.0.0.1", port)
-            } catch (e: BindException) {
-                continue
-            } catch (e: Exception) {
-                if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("ImageUploadServerManager", "Port binding failed", e)
-                continue
+            client.startPolling(tempFolder) { file ->
+                onImageUploaded(file)
             }
-        }
+            remoteClient = client
 
-        null
+            ServerInfo(
+                ip = "",
+                port = 0,
+                pairingUrl = session.pairingUrl
+            )
+        } catch (e: Exception) {
+            if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("ImageUploadServerManager", "Failed to start remote session", e)
+            null
+        }
     }
 
-    /**
-     * Stops the running server if any.
-     */
     fun stopServer() {
-        server?.stop()
-        server = null
+        remoteClient?.stopPolling()
+        remoteClient = null
     }
 }

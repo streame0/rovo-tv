@@ -98,7 +98,7 @@ Connect your Stremio account to instantly import your existing addon collection.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/RovoD3v/Rovo.git
+   git clone https://github.com/streame0/rovo-tv.git
    ```
 
 2. Open the project in Android Studio

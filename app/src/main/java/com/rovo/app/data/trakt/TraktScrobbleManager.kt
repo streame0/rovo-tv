@@ -3,7 +3,6 @@ package com.rovo.app.data.trakt
 import android.util.Log
 import com.rovo.app.data.local.AddonDao
 import com.rovo.app.data.model.trakt.TraktIds
-import com.rovo.app.data.supabase.SyncTriggerService
 import com.rovo.app.data.model.trakt.TraktScrobbleEpisode
 import com.rovo.app.data.model.trakt.TraktScrobbleMovie
 import com.rovo.app.data.model.trakt.TraktScrobbleRequest
@@ -30,8 +29,7 @@ import javax.inject.Singleton
 class TraktScrobbleManager @Inject constructor(
     private val traktSyncApi: TraktSyncApiService,
     private val traktAuthManager: TraktAuthManager,
-    private val dao: AddonDao,
-    private val syncTrigger: SyncTriggerService
+    private val dao: AddonDao
 ) {
     companion object {
         private const val TAG = "TraktScrobble"
@@ -122,7 +120,6 @@ class TraktScrobbleManager @Inject constructor(
         if (item != null && !item.scrobbled) {
             val updated = item.copy(scrobbled = true)
             dao.upsertHistory(updated)
-            syncTrigger.watchProgressSaved(updated)
         }
         // If item doesn't exist yet, saveProgress will pick up the flag via isScrobbled()
     }

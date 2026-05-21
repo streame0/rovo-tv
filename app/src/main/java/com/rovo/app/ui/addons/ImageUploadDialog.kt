@@ -1,9 +1,9 @@
 package com.rovo.app.ui.addons
 
 import android.graphics.Bitmap
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +18,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -33,7 +34,7 @@ import java.io.File
 
 /**
  * Dialog that displays a QR code for remote image upload.
- * Starts a local web server and shows QR code pointing to it.
+ * Creates a remote pairing session and shows QR code pointing to the hosted page.
  */
 @Composable
 fun ImageUploadDialog(
@@ -45,7 +46,7 @@ fun ImageUploadDialog(
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
     val context = LocalContext.current
-    val serverManager = remember { ImageUploadServerManager() }
+    val serverManager = remember { ImageUploadServerManager(context) }
     val focusRequester = remember { FocusRequester() }
 
     // Start server when dialog opens
@@ -56,7 +57,6 @@ fun ImageUploadDialog(
         val tempFolder = File(context.cacheDir, "remote_uploads").apply { if (!exists()) mkdirs() }
         
         val info = serverManager.startServer(tempFolder) { uploadedFile ->
-            // Image received from phone
             onImageUploaded(uploadedFile)
             onDismissRequest()
         }
@@ -65,14 +65,7 @@ fun ImageUploadDialog(
             serverInfo = info
             qrBitmap = generateQrCode(info.url)
         } else {
-            error = "Could not start server. Check your network connection."
-        }
-    }
-
-    // Stop server when dialog closes
-    DisposableEffect(Unit) {
-        onDispose {
-            serverManager.stopServer()
+            error = "Could not create pairing session. Check network."
         }
     }
 
@@ -99,7 +92,7 @@ fun ImageUploadDialog(
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
-                
+
                 Text(
                     "Scan with your phone to upload an image",
                     style = MaterialTheme.typography.bodyMedium,
@@ -159,7 +152,7 @@ fun ImageUploadDialog(
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "Starting server...",
+                            "Creating pairing session...",
                             color = Color.Gray
                         )
                     }

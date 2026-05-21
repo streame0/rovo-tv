@@ -45,6 +45,7 @@ import com.rovo.app.ui.settings.ThemeEditorScreen
 import com.rovo.app.R
 import com.rovo.app.data.model.ProfileEntity
 import com.rovo.app.data.model.ThemeEntity
+import com.rovo.app.ui.addons.ImageUploadDialog
 import com.rovo.app.ui.addons.VoidButton
 import com.rovo.app.ui.addons.VoidInput
 import com.rovo.app.ui.components.CenterCarouselRow
@@ -105,6 +106,7 @@ fun ProfileScreen(
                         onCancel = { viewModel.cancelWizard() }
                     )
                     2 -> WizardAvatarStep(
+                        viewModel = viewModel,
                         onNext = { viewModel.setWizardAvatar(it) },
                         onBack = { viewModel.goBackStep() }
                     )
@@ -682,17 +684,21 @@ fun WizardNameStep(initialName: String, onNext: (String) -> Unit, onCancel: () -
 }
 
 @Composable
-fun WizardAvatarStep(onNext: (String) -> Unit, onBack: () -> Unit) {
+fun WizardAvatarStep(
+    viewModel: ProfileViewModel,
+    onNext: (String) -> Unit,
+    onBack: () -> Unit
+) {
     val avatars = ProfileAssets.AVATAR_MAP.toList()
     val initialIndex = avatars.size / 2
     val listState = rememberLazyListState()
     val horizontalRepeatGate = remember {
         DpadRepeatGate(horizontalRepeatIntervalMs = PROFILE_HORIZONTAL_REPEAT_INTERVAL_MS)
     }
-    val focusRequesters = remember(avatars.size) { List(avatars.size) { FocusRequester() } }
-    val uploadButtonRequester = remember { FocusRequester() }
+    val focusRequesters = remember(avatars.size + 1) { List(avatars.size + 1) { FocusRequester() } }
     
     var showUploadDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         listState.scrollToItem(initialIndex)
@@ -701,6 +707,16 @@ fun WizardAvatarStep(onNext: (String) -> Unit, onBack: () -> Unit) {
     }
     BackHandler { onBack() }
 
+    if (showUploadDialog) {
+        ImageUploadDialog(
+            onDismissRequest = { showUploadDialog = false },
+            onImageUploaded = { file ->
+                viewModel.handleAvatarUpload(file, context)
+                onNext(viewModel.tempAvatarRef)
+            }
+        )
+    }
+
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
@@ -708,7 +724,7 @@ fun WizardAvatarStep(onNext: (String) -> Unit, onBack: () -> Unit) {
     ) {
         Text("Choose an Avatar", style = MaterialTheme.typography.headlineMedium, color = Color.White)
         Spacer(Modifier.height(16.dp))
-        Text("Select an avatar that represents you.", color = Color.Gray)
+        Text("Select an avatar or upload your own.", color = Color.Gray)
 
         Spacer(Modifier.height(40.dp))
 
@@ -726,77 +742,70 @@ fun WizardAvatarStep(onNext: (String) -> Unit, onBack: () -> Unit) {
                 }
             }
         ) {
+            // Upload Custom Button
+            item {
+                CustomAvatarUploadItem(
+                    onClick = { showUploadDialog = true },
+                    focusRequester = focusRequesters.last()
+                )
+            }
+
             items(avatars.size) { index ->
                 val (key, resId) = avatars[index]
                 AvatarGridItem(
-                    resId = resId,
+                    source = resId,
                     onClick = { onNext(key) },
                     focusRequester = focusRequesters[index],
                     modifier = Modifier.size(120.dp)
                 )
             }
         }
-        
-        Spacer(Modifier.height(32.dp))
-        
-        Text(
-            "Or",
-            style = MaterialTheme.typography.bodyLarge,
-            color = Color.Gray
-        )
-        
-        Spacer(Modifier.height(16.dp))
-        
-        UploadAvatarButton(
-            onClick = { showUploadDialog = true },
-            focusRequester = uploadButtonRequester
-        )
-    }
-    
-    if (showUploadDialog) {
-        AvatarUploadDialog(
-            onDismissRequest = { showUploadDialog = false },
-            onAvatarReceived = { avatarPath ->
-                showUploadDialog = false
-                onNext(avatarPath)
-            }
-        )
     }
 }
 
 @Composable
-private fun UploadAvatarButton(
+fun CustomAvatarUploadItem(
     onClick: () -> Unit,
     focusRequester: FocusRequester
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (isFocused) 1.05f else 1f)
-    
+    val scale by animateFloatAsState(if (isFocused) 1.15f else 1f)
+
     Box(
         modifier = Modifier
-            .scale(scale)
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (isFocused) MaterialTheme.colorScheme.primary
-                else Color.White.copy(alpha = 0.1f)
-            )
-            .border(
-                width = 2.dp,
-                color = if (isFocused) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.3f),
-                shape = RoundedCornerShape(12.dp)
-            )
+            .size(120.dp)
             .focusRequester(focusRequester)
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
-            .focusable(interactionSource = interactionSource)
-            .padding(horizontal = 24.dp, vertical = 14.dp),
+            .focusable(interactionSource = interactionSource),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            "Upload Your Own",
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = if (isFocused) Color.Black else Color.White.copy(alpha = 0.8f)
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(CircleShape)
+                .background(Color.White.copy(0.1f))
+                .border(3.dp, if (isFocused) MaterialTheme.colorScheme.primary else Color.White.copy(0.2f), CircleShape),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            androidx.compose.material3.Icon(
+                imageVector = androidx.compose.material.icons.Icons.Default.Add,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(32.dp)
+            )
+            Text(
+                "Upload",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
@@ -1154,7 +1163,7 @@ fun AddProfileCard(onClick: () -> Unit, focusRequester: FocusRequester? = null) 
 
 @Composable
 fun AvatarGridItem(
-    resId: Int, 
+    source: Any, 
     onClick: () -> Unit, 
     focusRequester: FocusRequester?,
     modifier: Modifier = Modifier,
@@ -1190,7 +1199,7 @@ fun AvatarGridItem(
         ) {
             AsyncImage(
             model = ImageRequest.Builder(context)
-                .data(resId)
+                .data(source)
                 .size(300, 300)
                 .crossfade(true)
                 .build(),
