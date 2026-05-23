@@ -28,7 +28,7 @@ import javax.inject.Singleton
 @Singleton
 class TraktScrobbleManager @Inject constructor(
     private val traktSyncApi: TraktSyncApiService,
-    private val traktAuthManager: TraktAuthManager,
+    val traktAuthManager: TraktAuthManager,
     private val dao: AddonDao
 ) {
     companion object {
@@ -105,6 +105,14 @@ class TraktScrobbleManager @Inject constructor(
         }
     }
 
+    /**
+     * Clear scrobbled state (e.g., on profile switch).
+     */
+    fun reset() {
+        scrobbledIds.clear()
+        lastScrobbleTimeMs = 0L
+    }
+
     // ── Internal ──
 
     /**
@@ -115,8 +123,9 @@ class TraktScrobbleManager @Inject constructor(
     private val scrobbledIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     private suspend fun markAsScrobbled(playbackId: String) {
+        val activeProfileId = traktAuthManager.activeProfileId()
         scrobbledIds.add(playbackId)
-        val item = dao.getHistoryItem(playbackId)
+        val item = dao.getHistoryItem(playbackId, activeProfileId)
         if (item != null && !item.scrobbled) {
             val updated = item.copy(scrobbled = true)
             dao.upsertHistory(updated)

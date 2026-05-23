@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.rovo.app.data.local.AddonDao
 import com.rovo.app.data.model.ProfileEntity
 import com.rovo.app.data.profile.ProfileConfigurationManager
+import com.rovo.app.data.trakt.TraktAuthManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -18,7 +19,8 @@ import javax.inject.Inject
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val dao: AddonDao,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val traktAuthManager: TraktAuthManager
 ) : ViewModel() {
 
     private val _profiles = MutableStateFlow<List<ProfileEntity>>(emptyList())
@@ -36,7 +38,8 @@ class ProfileViewModel @Inject constructor(
     // WIZARD DATA
     var tempName = ""
     var tempAvatarRef = "avatar_1"
-    var tempThemeId = "void"  // Changed from tempColor
+    var tempThemeId = "void"
+    var tempPin: String? = null
 
     private var editingProfileId: Int? = null
 
@@ -60,6 +63,7 @@ class ProfileViewModel @Inject constructor(
         tempName = ""
         tempAvatarRef = "avatar_1"
         tempThemeId = "void"
+        tempPin = null
         _wizardStep.value = 1
     }
 
@@ -68,6 +72,7 @@ class ProfileViewModel @Inject constructor(
         tempName = profile.name
         tempAvatarRef = profile.avatarRef
         tempThemeId = profile.themeId
+        tempPin = profile.pin
         _wizardStep.value = 1
     }
 
@@ -130,7 +135,8 @@ class ProfileViewModel @Inject constructor(
                 val updatedProfile = _profiles.value.find { it.id == editingProfileId }?.copy(
                     name = tempName,
                     avatarRef = tempAvatarRef,
-                    themeId = tempThemeId
+                    themeId = tempThemeId,
+                    pin = tempPin
                 )
                 if (updatedProfile != null) dao.updateProfile(updatedProfile)
             } else {
@@ -141,7 +147,8 @@ class ProfileViewModel @Inject constructor(
                         themeId = tempThemeId,
                         navPosition = "left",
                         homeTabLayout = "cinematic",
-                        roundCorners = true
+                        roundCorners = true,
+                        pin = tempPin
                     )
                 ).toInt()
                 if (profileId > 0) {
@@ -150,6 +157,16 @@ class ProfileViewModel @Inject constructor(
             }
             _wizardStep.value = 0
             editingProfileId = null
+        }
+    }
+
+    fun updatePin(profileId: Int, pin: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val profile = _profiles.value.find { it.id == profileId }
+            if (profile != null) {
+                dao.updateProfile(profile.copy(pin = pin))
+                loadProfiles()
+            }
         }
     }
 
@@ -185,6 +202,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             dao.deleteProfile(id)
             profileConfigurationManager.deleteProfileState(id)
+            traktAuthManager.clearTokensForProfile(id)
         }
     }
 

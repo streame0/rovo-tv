@@ -57,7 +57,7 @@ class TraktAuthManager @Inject constructor(
     private val _authState = MutableStateFlow<DeviceAuthState>(DeviceAuthState.Idle)
     val authState: StateFlow<DeviceAuthState> = _authState
 
-    private fun activeProfileId(): Int = profileConfigurationManager.getLastActiveProfileId() ?: 1
+    fun activeProfileId(): Int = profileConfigurationManager.getLastActiveProfileId() ?: 1
 
     private fun profileKey(key: String, profileId: Int = activeProfileId()) = "${key}_$profileId"
 
@@ -105,13 +105,15 @@ class TraktAuthManager @Inject constructor(
         _isConnected.value = true
     }
 
-    fun getAccessToken(): String? {
-        val token = prefs.getString(profileKey(KEY_ACCESS_TOKEN), null) ?: return null
+    fun getAccessToken(profileId: Int = activeProfileId()): String? {
+        val token = prefs.getString(profileKey(KEY_ACCESS_TOKEN, profileId), null) ?: return null
         // Proactive expiry check: flag as needing refresh if within 60 seconds of expiry
-        val expiresAt = prefs.getLong(profileKey(KEY_EXPIRES_AT), 0L)
+        val expiresAt = prefs.getLong(profileKey(KEY_EXPIRES_AT, profileId), 0L)
         if (expiresAt > 0 && System.currentTimeMillis() / 1000 >= expiresAt - 60) {
-            Log.d(TAG, "Token expired or expiring soon, needs refresh")
-            needsRefresh = true
+            Log.d(TAG, "Token for profile $profileId expired or expiring soon")
+            if (profileId == activeProfileId()) {
+                needsRefresh = true
+            }
         }
         return token
     }

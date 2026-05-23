@@ -76,11 +76,11 @@ interface AddonDao {
     @Query("DELETE FROM profiles WHERE id = :id")
     suspend fun deleteProfile(id: Int)
 
-    @Query("SELECT * FROM watch_history ORDER BY lastWatched DESC")
-    fun getWatchHistory(): Flow<List<WatchHistoryEntity>>
+    @Query("SELECT * FROM watch_history WHERE profileId = :profileId ORDER BY lastWatched DESC")
+    fun getWatchHistory(profileId: Int): Flow<List<WatchHistoryEntity>>
 
-    @Query("SELECT * FROM watch_history")
-    suspend fun getAllWatchHistoryOnce(): List<WatchHistoryEntity>
+    @Query("SELECT * FROM watch_history WHERE profileId = :profileId")
+    suspend fun getAllWatchHistoryOnce(profileId: Int): List<WatchHistoryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertHistory(item: WatchHistoryEntity)
@@ -88,30 +88,30 @@ interface AddonDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertHistoryItems(items: List<WatchHistoryEntity>)
 
-    @Query("DELETE FROM watch_history")
-    suspend fun clearWatchHistory()
+    @Query("DELETE FROM watch_history WHERE profileId = :profileId")
+    suspend fun clearWatchHistory(profileId: Int)
 
-    @Query("SELECT * FROM watch_history WHERE id = :id")
-    suspend fun getHistoryItem(id: String): WatchHistoryEntity?
+    @Query("SELECT * FROM watch_history WHERE id = :id AND profileId = :profileId")
+    suspend fun getHistoryItem(id: String, profileId: Int): WatchHistoryEntity?
 
-    @Query("SELECT * FROM watch_history WHERE id LIKE :prefix || '%'")
-    suspend fun getHistoryItemsByPrefix(prefix: String): List<WatchHistoryEntity>
+    @Query("SELECT * FROM watch_history WHERE id LIKE :prefix || '%' AND profileId = :profileId")
+    suspend fun getHistoryItemsByPrefix(prefix: String, profileId: Int): List<WatchHistoryEntity>
 
     @Query(
         "SELECT * FROM watch_history " +
-            "WHERE type = 'series' AND id LIKE :episodePrefix " +
+            "WHERE type = 'series' AND id LIKE :episodePrefix AND profileId = :profileId " +
             "ORDER BY lastWatched DESC LIMIT 1"
     )
-    suspend fun getLatestSeriesEpisodeHistory(episodePrefix: String): WatchHistoryEntity?
+    suspend fun getLatestSeriesEpisodeHistory(episodePrefix: String, profileId: Int): WatchHistoryEntity?
 
-    @Query("DELETE FROM watch_history WHERE id = :id")
-    suspend fun deleteHistoryItem(id: String)
+    @Query("DELETE FROM watch_history WHERE id = :id AND profileId = :profileId")
+    suspend fun deleteHistoryItem(id: String, profileId: Int)
 
-    @Query("SELECT * FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix")
-    suspend fun getSeriesEpisodeHistory(episodePrefix: String): List<WatchHistoryEntity>
+    @Query("SELECT * FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix AND profileId = :profileId")
+    suspend fun getSeriesEpisodeHistory(episodePrefix: String, profileId: Int): List<WatchHistoryEntity>
 
-    @Query("DELETE FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix")
-    suspend fun deleteSeriesHistory(episodePrefix: String)
+    @Query("DELETE FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix AND profileId = :profileId")
+    suspend fun deleteSeriesHistory(episodePrefix: String, profileId: Int)
 
     @Query("SELECT * FROM themes")
     fun getAllThemes(): Flow<List<ThemeEntity>>
@@ -207,92 +207,98 @@ interface AddonDao {
 
     // ── Watchlist ──
 
-    @Query("SELECT * FROM watchlist ORDER BY addedAt DESC")
-    fun getWatchlist(): Flow<List<WatchlistEntity>>
+    @Query("SELECT * FROM watchlist WHERE profileId = :profileId ORDER BY addedAt DESC")
+    fun getWatchlist(profileId: Int): Flow<List<WatchlistEntity>>
 
-    @Query("SELECT * FROM watchlist WHERE type = :type ORDER BY addedAt DESC")
-    fun getWatchlistByType(type: String): Flow<List<WatchlistEntity>>
+    @Query("SELECT * FROM watchlist WHERE type = :type AND profileId = :profileId ORDER BY addedAt DESC")
+    fun getWatchlistByType(type: String, profileId: Int): Flow<List<WatchlistEntity>>
 
-    @Query("SELECT * FROM watchlist ORDER BY addedAt DESC")
-    suspend fun getWatchlistOnce(): List<WatchlistEntity>
+    @Query("SELECT * FROM watchlist WHERE profileId = :profileId ORDER BY addedAt DESC")
+    suspend fun getWatchlistOnce(profileId: Int): List<WatchlistEntity>
 
-    @Query("SELECT * FROM watchlist WHERE id = :id")
-    suspend fun getWatchlistItem(id: String): WatchlistEntity?
+    @Query("DELETE FROM watchlist WHERE profileId = :profileId")
+    suspend fun clearWatchlist(profileId: Int)
 
-    @Query("SELECT * FROM watch_history WHERE scrobbled = 1 AND watched = 0")
-    suspend fun getScrobbledInProgressItems(): List<WatchHistoryEntity>
+    @Query("SELECT * FROM watchlist WHERE id = :id AND profileId = :profileId")
+    suspend fun getWatchlistItem(id: String, profileId: Int): WatchlistEntity?
 
-    @Query("SELECT * FROM watch_history WHERE scrobbled = 1 AND watched = 1")
-    suspend fun getScrobbledWatchedItems(): List<WatchHistoryEntity>
+    @Query("SELECT * FROM watch_history WHERE scrobbled = 1 AND watched = 0 AND profileId = :profileId")
+    suspend fun getScrobbledInProgressItems(profileId: Int): List<WatchHistoryEntity>
 
-    @Query("SELECT id FROM watch_history WHERE watched = 1")
-    fun getWatchedIds(): Flow<List<String>>
+    @Query("SELECT * FROM watch_history WHERE scrobbled = 1 AND watched = 1 AND profileId = :profileId")
+    suspend fun getScrobbledWatchedItems(profileId: Int): List<WatchHistoryEntity>
 
-    @Query("UPDATE watch_history SET poster = :poster, background = :background, logo = :logo WHERE id = :id")
-    suspend fun updateHistoryImages(id: String, poster: String?, background: String?, logo: String?)
+    @Query("SELECT id FROM watch_history WHERE watched = 1 AND profileId = :profileId")
+    fun getWatchedIds(profileId: Int): Flow<List<String>>
+
+    @Query("UPDATE watch_history SET poster = :poster, background = :background, logo = :logo WHERE id = :id AND profileId = :profileId")
+    suspend fun updateHistoryImages(id: String, profileId: Int, poster: String?, background: String?, logo: String?)
 
     // ── Series Next Up ──
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSeriesNextUp(entry: SeriesNextUpEntity)
 
-    @Query("SELECT * FROM series_next_up WHERE isComplete = 0 ORDER BY updatedAt DESC")
-    fun getActiveSeriesNextUp(): Flow<List<SeriesNextUpEntity>>
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSeriesNextUpItems(items: List<SeriesNextUpEntity>)
 
-    @Query("SELECT * FROM series_next_up WHERE seriesId = :seriesId")
-    suspend fun getSeriesNextUp(seriesId: String): SeriesNextUpEntity?
+    @Query("DELETE FROM series_next_up WHERE profileId = :profileId")
+    suspend fun clearSeriesNextUp(profileId: Int)
 
-    @Query("DELETE FROM series_next_up WHERE seriesId = :seriesId")
-    suspend fun deleteSeriesNextUp(seriesId: String)
+    @Query("SELECT * FROM series_next_up WHERE isComplete = 0 AND profileId = :profileId ORDER BY updatedAt DESC")
+    fun getActiveSeriesNextUp(profileId: Int): Flow<List<SeriesNextUpEntity>>
 
-    @Query("SELECT EXISTS(SELECT 1 FROM watchlist WHERE id = :id)")
-    suspend fun isInWatchlist(id: String): Boolean
+    @Query("SELECT * FROM series_next_up WHERE seriesId = :seriesId AND profileId = :profileId")
+    suspend fun getSeriesNextUp(seriesId: String, profileId: Int): SeriesNextUpEntity?
 
-    @Query("SELECT EXISTS(SELECT 1 FROM watchlist WHERE id = :id)")
-    fun isInWatchlistFlow(id: String): Flow<Boolean>
+    @Query("DELETE FROM series_next_up WHERE seriesId = :seriesId AND profileId = :profileId")
+    suspend fun deleteSeriesNextUp(seriesId: String, profileId: Int)
+
+    @Query("SELECT * FROM series_next_up WHERE profileId = :profileId")
+    suspend fun getAllSeriesNextUpOnce(profileId: Int): List<SeriesNextUpEntity>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM watchlist WHERE id = :id AND profileId = :profileId)")
+    suspend fun isInWatchlist(id: String, profileId: Int): Boolean
+
+    @Query("SELECT EXISTS(SELECT 1 FROM watchlist WHERE id = :id AND profileId = :profileId)")
+    fun isInWatchlistFlow(id: String, profileId: Int): Flow<Boolean>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addToWatchlist(item: WatchlistEntity)
 
-    @Query("DELETE FROM watchlist WHERE id = :id")
-    suspend fun removeFromWatchlist(id: String)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun addToWatchlistItems(items: List<WatchlistEntity>)
+
+    @Query("DELETE FROM watchlist WHERE id = :id AND profileId = :profileId")
+    suspend fun removeFromWatchlist(id: String, profileId: Int)
 
     @Transaction
     suspend fun replaceRuntimeState(
+        profileId: Int,
         addons: List<AddonEntity>,
         catalogConfigs: List<CatalogConfigEntity>,
         hubRows: List<HubRowEntity>,
         hubRowItems: List<HubRowItemEntity>,
-        watchHistory: List<WatchHistoryEntity>
+        watchHistory: List<WatchHistoryEntity>,
+        watchlist: List<WatchlistEntity>,
+        seriesNextUp: List<SeriesNextUpEntity>
     ) {
-        // Replace addon/catalog/hub state from snapshot
+        // 1. Clear everything first to ensure strict per-profile isolation
         clearHubRowItems()
         clearHubRows()
         clearCatalogConfigs()
         clearAddons()
+        clearWatchHistory(profileId)
+        clearWatchlist(profileId)
+        clearSeriesNextUp(profileId)
 
+        // 2. Insert new state from snapshot
         if (addons.isNotEmpty()) insertAddons(addons)
         if (catalogConfigs.isNotEmpty()) saveCatalogConfigs(catalogConfigs)
         if (hubRows.isNotEmpty()) insertHubRows(hubRows)
         if (hubRowItems.isNotEmpty()) insertHubRowItems(hubRowItems)
-
-        // Merge watch history: keep whichever entry is newer (DB or snapshot).
-        // Prevents a stale snapshot from overwriting progress saved during playback
-        // (e.g., power failure before onStop snapshot could be written).
-        val existing = getAllWatchHistoryOnce().associateBy { it.id }
-        val snapshotMap = watchHistory.associateBy { it.id }
-        val allIds = existing.keys + snapshotMap.keys
-        val merged = allIds.mapNotNull { id ->
-            val db = existing[id]
-            val snap = snapshotMap[id]
-            when {
-                db == null -> snap
-                snap == null -> db
-                snap.lastWatched >= db.lastWatched -> snap
-                else -> db
-            }
-        }
-        clearWatchHistory()
-        if (merged.isNotEmpty()) upsertHistoryItems(merged)
+        if (watchHistory.isNotEmpty()) upsertHistoryItems(watchHistory)
+        if (watchlist.isNotEmpty()) addToWatchlistItems(watchlist)
+        if (seriesNextUp.isNotEmpty()) upsertSeriesNextUpItems(seriesNextUp)
     }
 }

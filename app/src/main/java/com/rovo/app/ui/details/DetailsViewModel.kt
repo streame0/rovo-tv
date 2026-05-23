@@ -23,6 +23,7 @@ import com.rovo.app.data.tmdb.TmdbVideoInfo
 import com.rovo.app.domain.AddonSubtitle
 import com.rovo.app.domain.episodeStreamId
 import com.rovo.app.data.trakt.TraktSyncManager
+import com.rovo.app.data.trakt.TraktScrobbleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.rovo.app.data.model.SeriesNextUpEntity
 import com.rovo.app.data.model.WatchHistoryEntity
@@ -55,7 +56,8 @@ class DetailsViewModel @Inject constructor(
     private val streamSortingService: StreamSortingService,
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
-    private val traktSyncManager: TraktSyncManager
+    private val traktSyncManager: TraktSyncManager,
+    private val traktScrobbleManager: TraktScrobbleManager
 ) : ViewModel() {
 
     /** Per-episode watch progress for the episodes sidebar. */
@@ -95,7 +97,14 @@ class DetailsViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val isInWatchlist: StateFlow<Boolean> = _state
         .map { it.resolvedId ?: it.meta?.id }
-        .flatMapLatest { id -> if (id != null) dao.isInWatchlistFlow(id) else flowOf(false) }
+        .flatMapLatest { id ->
+            if (id != null) {
+                val profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
+                dao.isInWatchlistFlow(id, profileId)
+            } else {
+                flowOf(false)
+            }
+        }
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), false)
 
     private var loadDetailsJob: Job? = null
@@ -157,14 +166,15 @@ class DetailsViewModel @Inject constructor(
                 if (requestVersion != loadRequestVersion) return@launch
                 loadedContentKey = requestKey
                 // Use resolved ID for streams — guarantees IMDb format for stream addons
+                val activeProfileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
                 val streamFetchId = if (details.id.startsWith("tt")) details.id else resolvedId
                 val resumePlaybackId = if (details.type == "series") {
-                    val latest = dao.getLatestSeriesEpisodeHistory("${streamFetchId}:%")
+                    val latest = dao.getLatestSeriesEpisodeHistory("${streamFetchId}:%", activeProfileId)
                     if (latest != null && !latest.watched) {
                         latest.id // In-progress episode — resume it
                     } else {
                         // All episodes watched or no history — use next-up if aired
-                        val nextUp = dao.getSeriesNextUp(streamFetchId)
+                        val nextUp = dao.getSeriesNextUp(streamFetchId, activeProfileId)
                         val today = java.time.LocalDate.now().toString()
                         val hasAired = nextUp != null && !nextUp.isComplete &&
                             (nextUp.nextReleased == null || nextUp.nextReleased <= today)
@@ -173,11 +183,11 @@ class DetailsViewModel @Inject constructor(
                         } else null
                     }
                 } else {
-                    val movieHistory = dao.getHistoryItem(streamFetchId)
+                    val movieHistory = dao.getHistoryItem(streamFetchId, activeProfileId)
                     if (movieHistory?.watched == true) null else movieHistory?.id
                 }
                 val isMovieWatched = if (details.type != "series") {
-                    dao.getHistoryItem(streamFetchId)?.watched == true
+                    dao.getHistoryItem(streamFetchId, activeProfileId)?.watched == true
                 } else false
                 // Build per-episode progress map for the episodes sidebar
                 val episodeProgressMap = if (details.type == "series") {
@@ -248,12 +258,13 @@ class DetailsViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            val activeProfileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
             val resumePlaybackId = if (meta.type == "series") {
-                val latest = dao.getLatestSeriesEpisodeHistory("${meta.id}:%")
+                val latest = dao.getLatestSeriesEpisodeHistory("${meta.id}:%", activeProfileId)
                 if (latest != null && !latest.watched) {
                     latest.id
                 } else {
-                    val nextUp = dao.getSeriesNextUp(meta.id)
+                    val nextUp = dao.getSeriesNextUp(meta.id, activeProfileId)
                     val today = java.time.LocalDate.now().toString()
                     val hasAired = nextUp != null && !nextUp.isComplete &&
                         (nextUp.nextReleased == null || nextUp.nextReleased <= today)
@@ -262,11 +273,11 @@ class DetailsViewModel @Inject constructor(
                     } else null
                 }
             } else {
-                val movieHistory = dao.getHistoryItem(meta.id)
+                val movieHistory = dao.getHistoryItem(meta.id, activeProfileId)
                 if (movieHistory?.watched == true) null else movieHistory?.id
             }
             val isMovieWatched = if (meta.type != "series") {
-                dao.getHistoryItem(meta.id)?.watched == true
+                dao.getHistoryItem(meta.id, activeProfileId)?.watched == true
             } else false
             if (_state.value.meta?.id == meta.id && _state.value.meta?.type == meta.type) {
                 val episodeProgressMap = if (meta.type == "series") {
@@ -295,7 +306,8 @@ class DetailsViewModel @Inject constructor(
      * Checks both with and without stream index suffix.
      */
     private suspend fun buildEpisodeProgressMap(seriesId: String): Map<String, EpisodeProgress> {
-        val historyItems = dao.getSeriesEpisodeHistory("$seriesId:%")
+        val activeProfileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
+        val historyItems = dao.getSeriesEpisodeHistory("$seriesId:%", activeProfileId)
         if (historyItems.isEmpty()) return emptyMap()
 
         val map = mutableMapOf<String, EpisodeProgress>()
@@ -336,9 +348,10 @@ class DetailsViewModel @Inject constructor(
         val progressMap = buildEpisodeProgressMap(seriesId)
 
         // If no episodes have been watched, remove the next-up entry entirely
+        val activeProfileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
         val hasAnyWatched = progressMap.values.any { it.watched }
         if (!hasAnyWatched) {
-            dao.deleteSeriesNextUp(seriesId)
+            dao.deleteSeriesNextUp(seriesId, activeProfileId)
             return
         }
 
@@ -355,7 +368,7 @@ class DetailsViewModel @Inject constructor(
             progressMap[key]?.watched != true
         }
 
-        val existing = dao.getSeriesNextUp(seriesId)
+        val existing = dao.getSeriesNextUp(seriesId, activeProfileId)
 
         if (nextEpisode != null) {
             val epTitle = nextEpisode.title.takeIf { it.isNotBlank() && it != "Episode" }
@@ -376,6 +389,7 @@ class DetailsViewModel @Inject constructor(
             dao.upsertSeriesNextUp(
                 SeriesNextUpEntity(
                     seriesId = seriesId,
+                    profileId = activeProfileId,
                     title = title,
                     poster = poster ?: existing?.poster,
                     nextSeason = nextEpisode.season,
@@ -394,6 +408,7 @@ class DetailsViewModel @Inject constructor(
             dao.upsertSeriesNextUp(
                 SeriesNextUpEntity(
                     seriesId = seriesId,
+                    profileId = activeProfileId,
                     title = title,
                     poster = poster ?: existing?.poster,
                     nextSeason = 0,
@@ -513,12 +528,14 @@ class DetailsViewModel @Inject constructor(
         val isCurrentlyWatched = _state.value.isMovieWatched
 
         viewModelScope.launch(Dispatchers.IO) {
+            val activeProfileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
             if (isCurrentlyWatched) {
-                dao.deleteHistoryItem(itemId)
+                dao.deleteHistoryItem(itemId, activeProfileId)
                 traktSyncManager.pushMovieUnwatched(itemId)
             } else {
                 val entry = WatchHistoryEntity(
                     id = itemId,
+                    profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1,
                     title = meta.name,
                     poster = meta.poster,
                     position = 0L,
@@ -530,6 +547,13 @@ class DetailsViewModel @Inject constructor(
                 )
                 dao.upsertHistory(entry)
                 traktSyncManager.pushMovieWatched(itemId)
+                // Stop any active scrobble on Trakt so the "watched" state is clean
+                traktScrobbleManager.scrobbleStop(
+                    playbackId = itemId,
+                    mediaType = "movie",
+                    positionMs = 0,
+                    durationMs = 0
+                )
             }
             _state.value = _state.value.copy(
                 isMovieWatched = !isCurrentlyWatched,
@@ -546,13 +570,14 @@ class DetailsViewModel @Inject constructor(
         val isCurrentlyWatched = currentProgress?.watched ?: false
 
         viewModelScope.launch(Dispatchers.IO) {
+            val activeProfileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
             if (isCurrentlyWatched) {
                 // Unmark: remove watched entry from history
                 val playbackId = "$streamId:${episode.season}:${episode.episode}"
-                dao.deleteHistoryItem(playbackId)
+                dao.deleteHistoryItem(playbackId, activeProfileId)
                 // Also try with stream index variants
-                dao.getSeriesEpisodeHistory("$playbackId:%").forEach {
-                    dao.deleteHistoryItem(it.id)
+                dao.getSeriesEpisodeHistory("$playbackId:%", activeProfileId).forEach {
+                    dao.deleteHistoryItem(it.id, activeProfileId)
                 }
                 traktSyncManager.pushEpisodeUnwatched(streamId, episode.season, episode.episode)
             } else {
@@ -560,6 +585,7 @@ class DetailsViewModel @Inject constructor(
                 val playbackId = "$streamId:${episode.season}:${episode.episode}"
                 val entry = WatchHistoryEntity(
                     id = playbackId,
+                    profileId = activeProfileId,
                     title = episode.title.takeIf { it.isNotBlank() && it != "Episode" }
                         ?: "S${episode.season}:E${episode.episode} - ${meta.name}",
                     poster = meta.poster,
@@ -572,6 +598,13 @@ class DetailsViewModel @Inject constructor(
                 )
                 dao.upsertHistory(entry)
                 traktSyncManager.pushEpisodeWatched(streamId, episode.season, episode.episode)
+                // Stop any active scrobble on Trakt so the "watched" state is clean
+                traktScrobbleManager.scrobbleStop(
+                    playbackId = playbackId,
+                    mediaType = "series",
+                    positionMs = 0,
+                    durationMs = 0
+                )
             }
 
             // Refresh the progress map and next-up entry
@@ -739,20 +772,21 @@ class DetailsViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             // Collect items to clear
+            val activeProfileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
             val historyItems = if (meta.type == "series") {
-                dao.getSeriesEpisodeHistory("${meta.id}:%")
+                dao.getSeriesEpisodeHistory("${meta.id}:%", activeProfileId)
             } else {
-                listOfNotNull(dao.getHistoryItem(meta.id))
+                listOfNotNull(dao.getHistoryItem(meta.id, activeProfileId))
             }
 
             // Delete from local DB
             if (meta.type == "series") {
-                dao.deleteSeriesHistory("${meta.id}:%")
-                dao.deleteSeriesNextUp(meta.id)
+                dao.deleteSeriesHistory("${meta.id}:%", activeProfileId)
+                dao.deleteSeriesNextUp(meta.id, activeProfileId)
                 sourceSelectionStore.clearSelectionsForPrefix(meta.id)
                 playbackTrackSelectionStore.clearSelectionsForPrefix(meta.id)
             } else {
-                dao.deleteHistoryItem(meta.id)
+                dao.deleteHistoryItem(meta.id, activeProfileId)
                 sourceSelectionStore.clearSelection(meta.id)
                 playbackTrackSelectionStore.clearSelection(meta.id)
             }
@@ -797,12 +831,14 @@ class DetailsViewModel @Inject constructor(
         val meta = _state.value.meta ?: return
         val itemId = _state.value.resolvedId ?: meta.id
         viewModelScope.launch(Dispatchers.IO) {
-            if (dao.isInWatchlist(itemId)) {
-                dao.removeFromWatchlist(itemId)
+            val activeProfileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
+            if (dao.isInWatchlist(itemId, activeProfileId)) {
+                dao.removeFromWatchlist(itemId, activeProfileId)
                 traktSyncManager.pushRemove(itemId, meta.type)
             } else {
                 val entity = WatchlistEntity(
                     id = itemId,
+                    profileId = activeProfileId,
                     type = meta.type,
                     title = meta.name,
                     poster = meta.poster,

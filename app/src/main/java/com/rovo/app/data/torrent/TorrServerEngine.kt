@@ -36,24 +36,41 @@ class TorrServerEngine @Inject constructor(
         }
 
         val binaryPath = getBinaryPath()
-        if (binaryPath == null || !File(binaryPath).exists()) {
-            throw IllegalStateException("TorrServer binary not found at: $binaryPath")
+        if (binaryPath == null) {
+            throw IllegalStateException("TorrServer binary not found in native library directory")
         }
 
-        if (BuildConfig.DEBUG) Log.d(TAG, "Starting TorrServer from: $binaryPath")
-
-        // Ensure the binary is executable
         val binaryFile = File(binaryPath)
-        if (!binaryFile.canExecute()) {
-            binaryFile.setExecutable(true)
+        val abis = android.os.Build.SUPPORTED_ABIS.joinToString()
+        if (BuildConfig.DEBUG) {
+            Log.i(TAG, "System ABIs: $abis")
+            Log.i(TAG, "Starting TorrServer: $binaryPath (Size: ${binaryFile.length()}, CanExec: ${binaryFile.canExecute()})")
         }
 
         val configDir = File(context.filesDir, "torrserver")
         configDir.mkdirs()
 
-        process = ProcessBuilder(binaryPath, "-p", PORT.toString(), "-d", configDir.absolutePath)
+        // Use direct execution as primary, fallback to shell only if needed
+        val pb = ProcessBuilder(binaryPath, "-p", PORT.toString(), "-d", configDir.absolutePath)
             .redirectErrorStream(true)
-            .start()
+        
+        // Essential environment variables for Go-based TorrServer on Android
+        pb.environment()["GODEBUG"] = "netdns=go"
+        pb.environment()["HOME"] = configDir.absolutePath
+        pb.environment()["TMPDIR"] = configDir.absolutePath
+        
+        try {
+            process = pb.start()
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e(TAG, "Direct start failed, trying shell wrapper...", e)
+            process = ProcessBuilder("sh", "-c", "\"$binaryPath\" -p $PORT -d \"${configDir.absolutePath}\"")
+                .redirectErrorStream(true)
+                .apply {
+                    environment()["GODEBUG"] = "netdns=go"
+                    environment()["HOME"] = configDir.absolutePath
+                }
+                .start()
+        }
 
         // Log output in background for debugging
         if (BuildConfig.DEBUG) {
@@ -68,16 +85,27 @@ class TorrServerEngine @Inject constructor(
         }
 
         // Wait for server to be ready
-        val deadline = System.currentTimeMillis() + 10_000L
+        val deadline = System.currentTimeMillis() + 15_000L
         while (System.currentTimeMillis() < deadline) {
             if (echo()) {
                 if (BuildConfig.DEBUG) Log.d(TAG, "TorrServer started successfully on port $PORT")
                 return
             }
-            Thread.sleep(200)
+            
+            // Check if process died early
+            if (process?.isAlive == false) {
+                val exitCode = process?.exitValue()
+                val errorDetail = when(exitCode) {
+                    126 -> "Exec format error (126). Likely 64-bit binary on 32-bit CPU, or Linux binary on Android. Supported ABIs: $abis"
+                    127 -> "File not found (127). Missing dependencies or wrong path."
+                    else -> "Exit code $exitCode"
+                }
+                throw IllegalStateException("TorrServer failed: $errorDetail. Binary Size: ${binaryFile.length()}")
+            }
+            Thread.sleep(500)
         }
 
-        throw IllegalStateException("TorrServer failed to start within 10 seconds")
+        throw IllegalStateException("TorrServer failed to start within 15 seconds")
     }
 
     fun stop() {

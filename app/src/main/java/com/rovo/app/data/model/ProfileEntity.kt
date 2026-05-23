@@ -70,5 +70,7 @@ data class ProfileEntity(
 
     // TMDB integration
     val tmdbEnabled: Boolean = false,
-    val tmdbLanguage: String = ""                    // ISO-639-1, empty = device locale
+    val tmdbLanguage: String = "",                    // ISO-639-1, empty = device locale
+
+    val pin: String? = null                          // 4-digit PIN for profile isolation
 )

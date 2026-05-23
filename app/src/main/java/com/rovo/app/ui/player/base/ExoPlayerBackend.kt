@@ -514,14 +514,18 @@ class ExoPlayerBackend(
         val player = exoPlayer ?: return
         val wasPaused = !player.playWhenReady
         player.play()
-        if (wasPaused && player.playbackState == Player.STATE_READY) {
-            // Force a codec flush on resume to prevent indefinite buffering on
-            // certain MKV files. Seeking to current position + 1ms ensures
-            // ExoPlayer doesn't optimise the seek away, while CLOSEST_SYNC
-            // snaps to the nearest keyframe (no visible skip).
-            val pos = player.currentPosition.coerceAtLeast(0L)
-            player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
-            player.seekTo(pos + 1L)
+        if (wasPaused) {
+            val isBuffering = player.playbackState == Player.STATE_BUFFERING
+            if (player.playbackState == Player.STATE_READY || (isTorrentStream && isBuffering)) {
+                // Force a codec flush on resume to prevent indefinite buffering on
+                // certain MKV files. Seeking to current position + 1ms ensures
+                // ExoPlayer doesn't optimise the seek away, while CLOSEST_SYNC
+                // snaps to the nearest keyframe (no visible skip).
+                // For torrents, we also do this if buffering to kickstart the proxy.
+                val pos = player.currentPosition.coerceAtLeast(0L)
+                player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                player.seekTo(pos + 1L)
+            }
         }
     }
 
@@ -824,6 +828,7 @@ class ExoPlayerBackend(
 
     override fun release() {
         released = true
+        isTorrentStream = false
         frameRateManager?.restoreOriginalMode()
         assHandler?.release()
         assHandler = null
@@ -892,6 +897,9 @@ class ExoPlayerBackend(
         resetSourceRetryBudget: Boolean = true
     ) {
         val request = loadRequest ?: return
+
+        val sourceUri = Uri.parse(source.url)
+        isTorrentStream = sourceUri.host == "127.0.0.1" || sourceUri.host == "localhost"
 
         if (resetSourceRetryBudget) {
             ioAutoRetrySourceId = source.id
@@ -1106,6 +1114,7 @@ class ExoPlayerBackend(
     private fun createMediaSource(sourceUrl: String, mediaItem: MediaItem): MediaSource {
         val sourceUri = Uri.parse(sourceUrl)
         val isHttp = sourceUri.scheme?.lowercase(Locale.US)?.startsWith("http") == true
+        val isLocalhost = sourceUri.host == "127.0.0.1" || sourceUri.host == "localhost"
 
         if (!isHttp) {
             return DefaultMediaSourceFactory(appContext, sharedExtractorsFactory)
@@ -1113,8 +1122,6 @@ class ExoPlayerBackend(
         }
 
         val userInfo = sourceUri.userInfo
-        val isLocalhost = sourceUri.host == "127.0.0.1" || sourceUri.host == "localhost"
-        isTorrentStream = isLocalhost
         val okHttpFactory = OkHttpDataSource.Factory(getOrCreateOkHttpClient(isLocalhost))
             .setUserAgent(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
@@ -1178,7 +1185,7 @@ class ExoPlayerBackend(
     private fun getOrCreateOkHttpClient(isLocalhost: Boolean = false): OkHttpClient {
         if (isLocalhost) {
             return torrentOkHttpClient ?: OkHttpClient.Builder()
-                .connectTimeout(8000, TimeUnit.MILLISECONDS)
+                .connectTimeout(15_000, TimeUnit.MILLISECONDS)
                 .readTimeout(120_000, TimeUnit.MILLISECONDS)
                 .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
                 .retryOnConnectionFailure(true)
@@ -1213,7 +1220,7 @@ class ExoPlayerBackend(
 
     private fun updateProgressLoopState() {
         val player = exoPlayer
-        val shouldRun = player?.isPlaying == true
+        val shouldRun = player?.playWhenReady == true
         if (shouldRun) startProgressLoop() else stopProgressLoop()
     }
 
@@ -1225,14 +1232,32 @@ class ExoPlayerBackend(
         val buffered = player.bufferedPosition.coerceAtLeast(0L)
         val speed = player.playbackParameters.speed
 
+        val isBuffering = player.playbackState == Player.STATE_BUFFERING
+        if (isBuffering && player.playWhenReady) {
+            val now = SystemClock.elapsedRealtime()
+            if (bufferingAnchorPositionMs == C.TIME_UNSET || position != bufferingAnchorPositionMs) {
+                bufferingAnchorPositionMs = position
+                bufferingAnchorElapsedMs = now
+            } else if (isTorrentStream) {
+                val bufferingDuration = now - bufferingAnchorElapsedMs
+                if (bufferingDuration > 15_000L && (now - lastBufferingRecoveryAttemptMs) > 20_000L) {
+                    lastBufferingRecoveryAttemptMs = now
+                    player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                    player.seekTo(position + 1L)
+                }
+            }
+        } else {
+            bufferingAnchorPositionMs = C.TIME_UNSET
+        }
+
         _uiState.update {
             it.copy(
                 durationMs = duration,
                 positionMs = position,
-                bufferedPositionMs = if (player.isPlaying) buffered else it.bufferedPositionMs,
+                bufferedPositionMs = if (player.isPlaying || isBuffering) buffered else it.bufferedPositionMs,
                 isPlaying = player.isPlaying,
                 playWhenReady = player.playWhenReady,
-                isBuffering = player.playbackState == Player.STATE_BUFFERING,
+                isBuffering = isBuffering,
                 isReady = player.playbackState == Player.STATE_READY,
                 playbackSpeed = speed,
                 currentSourceId = currentSourceId ?: it.currentSourceId
@@ -1251,7 +1276,11 @@ class ExoPlayerBackend(
         }
 
         val isAudioError = isAudioTrackError(error)
-        val maxRetries = if (isAudioError) MAX_AUDIO_AUTO_RETRIES_PER_SOURCE else MAX_IO_AUTO_RETRIES_PER_SOURCE
+        val maxRetries = when {
+            isAudioError -> MAX_AUDIO_AUTO_RETRIES_PER_SOURCE
+            isTorrentStream -> 3
+            else -> MAX_IO_AUTO_RETRIES_PER_SOURCE
+        }
         if (ioAutoRetryCountForCurrentSource >= maxRetries) {
             return false
         }

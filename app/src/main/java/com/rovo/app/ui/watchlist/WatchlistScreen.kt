@@ -39,6 +39,11 @@ fun WatchlistScreen(
     val movies by viewModel.movieItems.collectAsState()
     val series by viewModel.seriesItems.collectAsState()
 
+    // Ensure ViewModel is using the correct profile data
+    LaunchedEffect(currentProfile?.id) {
+        viewModel.refreshProfile()
+    }
+
     androidx.activity.compose.BackHandler { drawerRequester.requestFocus() }
 
     val upKeyDebouncer = remember { UpKeyDebouncer() }

@@ -33,7 +33,8 @@ class PlayerViewModel @Inject constructor(
             val safePosition = position.coerceAtLeast(0L)
             if (safePosition < 5_000L) return@launch
 
-            val existing = dao.getHistoryItem(id)
+            val activeProfileId = traktScrobbleManager.traktAuthManager.activeProfileId()
+            val existing = dao.getHistoryItem(id, activeProfileId)
             val safeDuration = (duration ?: existing?.duration ?: safePosition)
                 .coerceAtLeast(safePosition)
 
@@ -44,6 +45,7 @@ class PlayerViewModel @Inject constructor(
 
             val entry = WatchHistoryEntity(
                 id = id,
+                profileId = activeProfileId,
                 title = title,
                 poster = poster ?: existing?.poster,
                 background = existing?.background,
@@ -61,7 +63,8 @@ class PlayerViewModel @Inject constructor(
 
     fun markCompleted(id: String) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val existing = dao.getHistoryItem(id)
+            val activeProfileId = traktScrobbleManager.traktAuthManager.activeProfileId()
+            val existing = dao.getHistoryItem(id, activeProfileId)
             if (existing != null) {
                 val updated = existing.copy(watched = true, lastWatched = System.currentTimeMillis())
                 dao.upsertHistory(updated)
@@ -91,7 +94,8 @@ class PlayerViewModel @Inject constructor(
 
     suspend fun getResumePosition(id: String): Long {
         return withContext(Dispatchers.IO) {
-            val item = dao.getHistoryItem(id)
+            val activeProfileId = traktScrobbleManager.traktAuthManager.activeProfileId()
+            val item = dao.getHistoryItem(id, activeProfileId)
             item?.position?.takeIf { it > 0 } ?: 0L
         }
     }

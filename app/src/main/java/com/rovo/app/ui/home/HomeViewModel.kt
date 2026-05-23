@@ -43,6 +43,7 @@ class HomeViewModel @Inject constructor(
     private var verticalScrollPositionMemory: Pair<Int, Int> = Pair(0, 0)
     private var hadHistoryWhenPositionSaved: Boolean = false
     private var isRestoringPosition: Boolean = false
+    private var currentProfile: com.rovo.app.data.model.ProfileEntity? = null
 
     data class HomeState(
         val mixedRows: List<HomeRowItem> = emptyList(),
@@ -291,10 +292,11 @@ class HomeViewModel @Inject constructor(
                     // For series, the history stores episode-level IDs (e.g. tt123:1:3)
                     // but the MetaItem uses the canonical series ID (tt123).
                     // Look up both the exact ID and all episode entries by prefix.
+                    val activeProfileId = currentProfile?.id ?: 1
                     val historyItems = if (item.type == "series") {
-                        dao.getHistoryItemsByPrefix(item.id)
+                        dao.getHistoryItemsByPrefix(item.id, activeProfileId)
                     } else {
-                        listOfNotNull(dao.getHistoryItem(item.id))
+                        listOfNotNull(dao.getHistoryItem(item.id, activeProfileId))
                     }
                     for (historyItem in historyItems) {
                         val needsPoster = historyItem.poster.isNullOrBlank() && !fallback.poster.isNullOrBlank()
@@ -303,6 +305,7 @@ class HomeViewModel @Inject constructor(
                         if (needsPoster || needsBackground || needsLogo) {
                             dao.updateHistoryImages(
                                 id = historyItem.id,
+                                profileId = activeProfileId,
                                 poster = if (needsPoster) fallback.poster else historyItem.poster,
                                 background = if (needsBackground) fallback.background else historyItem.background,
                                 logo = if (needsLogo) fallback.logo else historyItem.logo
@@ -311,7 +314,7 @@ class HomeViewModel @Inject constructor(
                     }
                     // Also update series next-up poster if missing
                     if (!fallback.poster.isNullOrBlank()) {
-                        val nextUp = dao.getSeriesNextUp(item.id)
+                        val nextUp = dao.getSeriesNextUp(item.id, activeProfileId)
                         if (nextUp != null && nextUp.poster.isNullOrBlank()) {
                             dao.upsertSeriesNextUp(nextUp.copy(poster = fallback.poster))
                         }
@@ -548,8 +551,9 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun loadScreen(screenName: String, currentProfile: com.rovo.app.data.model.ProfileEntity?) {
-        val currentProfileId = currentProfile?.id
+    fun loadScreen(screenName: String, profile: com.rovo.app.data.model.ProfileEntity?) {
+        this.currentProfile = profile
+        val currentProfileId = profile?.id
         // ... (existing code)
         // Skip reload if this screen is already loaded with data
         if (
@@ -589,12 +593,12 @@ class HomeViewModel @Inject constructor(
             // Load History + Series Next Up only for Home
             if (screenName == "home") {
                 launch {
-                    dao.getWatchHistory().collect { history ->
+                    dao.getWatchHistory(currentProfile?.id ?: 1).collect { history ->
                         _state.update { it.copy(history = history) }
                     }
                 }
                 launch {
-                    dao.getActiveSeriesNextUp().collect { nextUp ->
+                    dao.getActiveSeriesNextUp(currentProfile?.id ?: 1).collect { nextUp ->
                         _state.update { it.copy(seriesNextUp = nextUp) }
                     }
                 }
@@ -604,7 +608,7 @@ class HomeViewModel @Inject constructor(
 
             // Load watched IDs for all tabs (watched indicator on posters)
             launch {
-                dao.getWatchedIds().collect { ids ->
+                dao.getWatchedIds(currentProfile?.id ?: 1).collect { ids ->
                     // Extract canonical series ID from episode IDs (tt123:1:3 → tt123)
                     val canonicalIds = ids.map { id ->
                         val parts = id.split(":")

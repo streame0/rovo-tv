@@ -25,7 +25,7 @@ import com.rovo.app.data.model.WatchlistEntity
         WatchlistEntity::class,
         SeriesNextUpEntity::class
     ],
-    version = 43
+    version = 45
 )
 abstract class RovoDatabase : RoomDatabase() {
     abstract fun addonDao(): AddonDao

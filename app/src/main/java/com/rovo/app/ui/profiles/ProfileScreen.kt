@@ -36,6 +36,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -70,6 +71,9 @@ fun ProfileScreen(
     val wizardStep by viewModel.wizardStep.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 
+    var showPinEntryForProfile by remember { mutableStateOf<ProfileEntity?>(null) }
+    var showPinEntryForEdit by remember { mutableStateOf<ProfileEntity?>(null) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -92,9 +96,21 @@ fun ProfileScreen(
                         } else {
                             ProfileSelectorView(
                                 profiles = profiles,
-                                onSelect = onProfileSelected,
+                                onSelect = { profile ->
+                                    if (profile.pin != null) {
+                                        showPinEntryForProfile = profile
+                                    } else {
+                                        onProfileSelected(profile)
+                                    }
+                                },
                                 onAdd = { viewModel.startWizard() },
-                                onEdit = { viewModel.startEditWizard(it) },
+                                onEdit = { profile ->
+                                    if (profile.pin != null) {
+                                        showPinEntryForEdit = profile
+                                    } else {
+                                        viewModel.startEditWizard(profile)
+                                    }
+                                },
                                 onDelete = { viewModel.deleteProfile(it.id) },
                                 viewModel = viewModel
                             )
@@ -117,7 +133,30 @@ fun ProfileScreen(
                 }
             }
         }
+    }
 
+    showPinEntryForProfile?.let { profile ->
+        PinEntryDialog(
+            profileName = profile.name,
+            correctPin = profile.pin!!,
+            onSuccess = {
+                showPinEntryForProfile = null
+                onProfileSelected(profile)
+            },
+            onDismiss = { showPinEntryForProfile = null }
+        )
+    }
+
+    showPinEntryForEdit?.let { profile ->
+        PinEntryDialog(
+            profileName = profile.name,
+            correctPin = profile.pin!!,
+            onSuccess = {
+                showPinEntryForEdit = null
+                viewModel.startEditWizard(profile)
+            },
+            onDismiss = { showPinEntryForEdit = null }
+        )
     }
 }
 
@@ -245,7 +284,8 @@ fun ProfileSelectorView(
             onDelete = {
                 onDelete(activeProfileForOptions!!)
                 activeProfileForOptions = null
-            }
+            },
+            viewModel = viewModel
         )
     }
 
@@ -491,13 +531,18 @@ fun ProfileOptionsDialog(
     profile: ProfileEntity,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    viewModel: ProfileViewModel
 ) {
     val editRequester = remember { FocusRequester() }
 
     // SAFETY LOCK: Delay input to prevent accidental clicks
     var areButtonsReady by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var showPinActionDialog by remember { mutableStateOf(false) }
+    var showVerifyCurrentPinForDelete by remember { mutableStateOf(false) }
+    var showVerifyCurrentPinForChange by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         delay(100)
@@ -506,7 +551,7 @@ fun ProfileOptionsDialog(
         areButtonsReady = true
     }
 
-    if (!showDeleteConfirmation) {
+    if (!showDeleteConfirmation && !showPinDialog && !showPinActionDialog) {
         Dialog(onDismissRequest = onDismiss) {
             Box(
                 modifier = Modifier
@@ -556,6 +601,24 @@ fun ProfileOptionsDialog(
                         focusRequester = editRequester
                     )
                     Spacer(Modifier.height(16.dp))
+
+                    VoidButton(
+                        text = if (profile.pin == null) "Create Profile PIN" else "Edit Profile PIN",
+                        onClick = {
+                            if (areButtonsReady) {
+                                if (profile.pin == null) {
+                                    showPinDialog = true
+                                } else {
+                                    showPinActionDialog = true
+                                }
+                            }
+                        },
+                        isPrimary = false,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
                     VoidButton(
                         text = "Delete Profile",
                         onClick = {
@@ -570,6 +633,54 @@ fun ProfileOptionsDialog(
         }
     }
 
+    if (showPinDialog) {
+        PinCreationDialog(
+            onPinCreated = { pin ->
+                viewModel.updatePin(profile.id, pin)
+                showPinDialog = false
+            },
+            onDismiss = { showPinDialog = false }
+        )
+    }
+
+    if (showPinActionDialog) {
+        PinActionDialog(
+            onDeletePin = {
+                showPinActionDialog = false
+                showVerifyCurrentPinForDelete = true
+            },
+            onChangePin = {
+                showPinActionDialog = false
+                showVerifyCurrentPinForChange = true
+            },
+            onDismiss = { showPinActionDialog = false }
+        )
+    }
+
+    if (showVerifyCurrentPinForDelete) {
+        PinEntryDialog(
+            profileName = profile.name,
+            correctPin = profile.pin!!,
+            onSuccess = {
+                viewModel.updatePin(profile.id, null)
+                showVerifyCurrentPinForDelete = false
+            },
+            onDismiss = { showVerifyCurrentPinForDelete = false }
+        )
+    }
+
+    if (showVerifyCurrentPinForChange) {
+        PinEntryDialog(
+            profileName = profile.name,
+            correctPin = profile.pin!!,
+            onSuccess = {
+                showVerifyCurrentPinForChange = false
+                showPinDialog = true
+            },
+            onDismiss = { showVerifyCurrentPinForChange = false }
+        )
+    }
+
     // Delete Confirmation Dialog
     if (showDeleteConfirmation) {
         DeleteConfirmationDialog(
@@ -580,6 +691,253 @@ fun ProfileOptionsDialog(
             },
             onDismiss = { showDeleteConfirmation = false }
         )
+    }
+}
+
+@Composable
+fun PinEntryDialog(
+    profileName: String,
+    correctPin: String,
+    onSuccess: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var enteredPin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(100)
+        focusRequester.requestFocus()
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .width(400.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color.Black)
+                .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Enter PIN for $profileName",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White
+                )
+                Spacer(Modifier.height(24.dp))
+
+                PinInputField(
+                    value = enteredPin,
+                    onValueChange = {
+                        if (it.length <= 4) {
+                            enteredPin = it
+                            error = null
+                            if (it.length == 4) {
+                                if (it == correctPin) {
+                                    onSuccess()
+                                } else {
+                                    error = "Incorrect PIN"
+                                    enteredPin = ""
+                                }
+                            }
+                        }
+                    },
+                    focusRequester = focusRequester
+                )
+
+                if (error != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+
+                Spacer(Modifier.height(32.dp))
+                VoidButton(text = "Cancel", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+fun PinCreationDialog(
+    onPinCreated: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var step by remember { mutableIntStateOf(1) } // 1: Enter PIN, 2: Confirm PIN
+    var error by remember { mutableStateOf<String?>(null) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(step) {
+        delay(100)
+        focusRequester.requestFocus()
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .width(400.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color.Black)
+                .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = if (step == 1) "Create Profile PIN" else "Confirm PIN",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White
+                )
+                Spacer(Modifier.height(24.dp))
+
+                PinInputField(
+                    value = if (step == 1) pin else confirmPin,
+                    onValueChange = {
+                        if (it.length <= 4) {
+                            if (step == 1) pin = it else confirmPin = it
+                            error = null
+                            if (it.length == 4) {
+                                if (step == 1) {
+                                    step = 2
+                                } else {
+                                    if (pin == confirmPin) {
+                                        onPinCreated(pin)
+                                    } else {
+                                        error = "PINs do not match"
+                                        confirmPin = ""
+                                        step = 1
+                                        pin = ""
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    focusRequester = focusRequester
+                )
+
+                if (error != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+
+                Spacer(Modifier.height(32.dp))
+                VoidButton(text = "Cancel", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+fun PinActionDialog(
+    onDeletePin: () -> Unit,
+    onChangePin: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val changeRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        delay(100)
+        changeRequester.requestFocus()
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .width(400.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color.Black)
+                .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Profile PIN",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White
+                )
+                Spacer(Modifier.height(32.dp))
+
+                VoidButton(
+                    text = "Change PIN",
+                    onClick = onChangePin,
+                    modifier = Modifier.fillMaxWidth(),
+                    focusRequester = changeRequester
+                )
+                Spacer(Modifier.height(16.dp))
+                VoidButton(
+                    text = "Delete PIN",
+                    onClick = onDeletePin,
+                    isDestructive = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(16.dp))
+                VoidButton(
+                    text = "Back",
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PinInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    focusRequester: FocusRequester
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .focusRequester(focusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) {
+                    val key = event.key
+                    when {
+                        key == Key.Zero || key == Key.NumPad0 -> { onValueChange(value + "0"); true }
+                        key == Key.One || key == Key.NumPad1 -> { onValueChange(value + "1"); true }
+                        key == Key.Two || key == Key.NumPad2 -> { onValueChange(value + "2"); true }
+                        key == Key.Three || key == Key.NumPad3 -> { onValueChange(value + "3"); true }
+                        key == Key.Four || key == Key.NumPad4 -> { onValueChange(value + "4"); true }
+                        key == Key.Five || key == Key.NumPad5 -> { onValueChange(value + "5"); true }
+                        key == Key.Six || key == Key.NumPad6 -> { onValueChange(value + "6"); true }
+                        key == Key.Seven || key == Key.NumPad7 -> { onValueChange(value + "7"); true }
+                        key == Key.Eight || key == Key.NumPad8 -> { onValueChange(value + "8"); true }
+                        key == Key.Nine || key == Key.NumPad9 -> { onValueChange(value + "9"); true }
+                        key == Key.Backspace -> {
+                            if (value.isNotEmpty()) onValueChange(value.dropLast(1))
+                            true
+                        }
+                        else -> false
+                    }
+                } else false
+            }
+    ) {
+        repeat(4) { index ->
+            val isFilled = index < value.length
+            Box(
+                modifier = Modifier
+                    .size(50.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isFilled) MaterialTheme.colorScheme.primary else Color.White.copy(0.1f))
+                    .border(2.dp, if (isFilled) Color.White else Color.Gray.copy(0.3f), RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isFilled) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black)
+                    )
+                }
+            }
+        }
     }
 }
 

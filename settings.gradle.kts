@@ -17,4 +17,4 @@ rootProject.name = "Rovo"
 include(":app")
 include(":playbackcore")
 include(":assrender")
-project(":assrender").projectDir = file("../assrender-main/assrender")
+project(":assrender").projectDir = file("../assrender/assrender")

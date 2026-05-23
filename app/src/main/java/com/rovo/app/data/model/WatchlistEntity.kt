@@ -5,9 +5,10 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 @Immutable
-@Entity(tableName = "watchlist")
+@Entity(tableName = "watchlist", primaryKeys = ["id", "profileId"])
 data class WatchlistEntity(
-    @PrimaryKey val id: String,       // IMDb or addon ID (e.g., "tt0111161")
+    val id: String,       // IMDb or addon ID (e.g., "tt0111161")
+    val profileId: Int,
     val type: String,                 // "movie" or "series"
     val title: String,
     val poster: String?,

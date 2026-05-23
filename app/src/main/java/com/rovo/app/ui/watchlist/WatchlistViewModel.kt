@@ -6,10 +6,13 @@ import com.rovo.app.data.local.AddonDao
 import com.rovo.app.data.model.WatchlistEntity
 import com.rovo.app.data.model.stremio.MetaItem
 import com.rovo.app.data.repository.AddonRepository
+import com.rovo.app.data.profile.ProfileConfigurationManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -18,7 +21,8 @@ import javax.inject.Inject
 @HiltViewModel
 class WatchlistViewModel @Inject constructor(
     private val dao: AddonDao,
-    private val repository: AddonRepository
+    private val repository: AddonRepository,
+    private val profileConfigurationManager: ProfileConfigurationManager
 ) : ViewModel() {
 
     private val resolveInFlight = mutableSetOf<String>()
@@ -28,13 +32,28 @@ class WatchlistViewModel @Inject constructor(
     val movieRowState = androidx.compose.foundation.lazy.LazyListState()
     val seriesRowState = androidx.compose.foundation.lazy.LazyListState()
 
-    val movieItems: StateFlow<List<MetaItem>> = dao.getWatchlistByType("movie")
-        .map { list -> list.map { it.toMetaItem() } }
+    private val _activeProfileId = MutableStateFlow(profileConfigurationManager.getLastActiveProfileId() ?: 1)
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val movieItems: StateFlow<List<MetaItem>> = _activeProfileId
+        .flatMapLatest { profileId ->
+            dao.getWatchlistByType("movie", profileId)
+                .map { list -> list.map { it.toMetaItem() } }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val seriesItems: StateFlow<List<MetaItem>> = dao.getWatchlistByType("series")
-        .map { list -> list.map { it.toMetaItem() } }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val seriesItems: StateFlow<List<MetaItem>> = _activeProfileId
+        .flatMapLatest { profileId ->
+            dao.getWatchlistByType("series", profileId)
+                .map { list -> list.map { it.toMetaItem() } }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Update current profile context if it changed after ViewModel init */
+    fun refreshProfile() {
+        _activeProfileId.value = profileConfigurationManager.getLastActiveProfileId() ?: 1
+    }
 
     /**
      * Resolve poster from addons for items missing one (e.g., pulled from Trakt).
@@ -48,7 +67,8 @@ class WatchlistViewModel @Inject constructor(
             try {
                 val meta = repository.resolveMetaDetails(item.type, item.id) ?: return@launch
                 if (!meta.poster.isNullOrBlank()) {
-                    val existing = dao.getWatchlistItem(item.id) ?: return@launch
+                    val profileId = _activeProfileId.value
+                    val existing = dao.getWatchlistItem(item.id, profileId) ?: return@launch
                     dao.addToWatchlist(existing.copy(poster = meta.poster))
                 }
             } catch (_: Exception) {

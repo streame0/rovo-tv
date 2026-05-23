@@ -7,6 +7,7 @@ import com.rovo.app.data.model.ProfileEntity
 import com.rovo.app.data.profile.ProfileConfigurationManager
 import com.rovo.app.data.trakt.TraktAuthManager
 import com.rovo.app.data.trakt.TraktSyncManager
+import com.rovo.app.data.trakt.TraktScrobbleManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,7 +23,8 @@ class MainViewModel @Inject constructor(
     private val dao: AddonDao,
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val traktAuthManager: TraktAuthManager,
-    private val traktSyncManager: TraktSyncManager
+    private val traktSyncManager: TraktSyncManager,
+    private val traktScrobbleManager: TraktScrobbleManager
 ) : ViewModel() {
 
     private val _activeProfile = MutableStateFlow<ProfileEntity?>(null)
@@ -59,6 +61,7 @@ class MainViewModel @Inject constructor(
             // Refresh Trakt connection for this profile and start periodic sync
             traktAuthManager.refreshConnectionState()
             traktSyncManager.resetActivityState()
+            traktScrobbleManager.reset()
             startTraktPeriodicSync()
 
             // Watch for Trakt connection changes (e.g. user connects after login)

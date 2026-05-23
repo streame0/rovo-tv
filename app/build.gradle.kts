@@ -30,8 +30,8 @@ android {
         applicationId = "com.rovo.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.1"
+        versionCode = 11
+        versionName = "1.2" //app vesion
 
         // GitHub repository for auto-update system
         buildConfigField("String", "GITHUB_OWNER", "\"streame0\"")
@@ -53,7 +53,7 @@ android {
             useSupportLibrary = true
         }
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
         }
     }
 

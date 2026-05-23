@@ -9,7 +9,9 @@ import com.rovo.app.data.model.AddonEntity
 import com.rovo.app.data.model.CatalogConfigEntity
 import com.rovo.app.data.model.HubRowEntity
 import com.rovo.app.data.model.HubRowItemEntity
+import com.rovo.app.data.model.SeriesNextUpEntity
 import com.rovo.app.data.model.WatchHistoryEntity
+import com.rovo.app.data.model.WatchlistEntity
 import com.rovo.app.data.model.stremio.CatalogManifest
 import com.rovo.app.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -23,7 +25,9 @@ data class ProfileRuntimeSnapshot(
     val catalogConfigs: List<CatalogConfigEntity> = emptyList(),
     val hubRows: List<HubRowEntity> = emptyList(),
     val hubRowItems: List<HubRowItemEntity> = emptyList(),
-    val watchHistory: List<WatchHistoryEntity> = emptyList()
+    val watchHistory: List<WatchHistoryEntity> = emptyList(),
+    val watchlist: List<WatchlistEntity> = emptyList(),
+    val seriesNextUp: List<SeriesNextUpEntity> = emptyList()
 )
 
 @Singleton
@@ -73,7 +77,7 @@ class ProfileConfigurationManager @Inject constructor(
     }
 
     suspend fun saveRuntimeState(profileId: Int) {
-        val snapshot = captureRuntimeSnapshot()
+        val snapshot = captureRuntimeSnapshot(profileId)
         writeSnapshot(profileId, snapshot)
         stremioAuthManager.saveCredentialsForProfile(profileId)
         setLastActiveProfileId(profileId)
@@ -87,7 +91,7 @@ class ProfileConfigurationManager @Inject constructor(
     suspend fun loadRuntimeState(profileId: Int) {
         val existingSnapshot = readSnapshot(profileId)
         val snapshot = existingSnapshot ?: if (!needsInitialSetup(profileId)) {
-            captureRuntimeSnapshot().also {
+            captureRuntimeSnapshot(profileId).also {
                 writeSnapshot(profileId, it)
                 stremioAuthManager.saveCredentialsForProfile(profileId)
             }
@@ -95,11 +99,14 @@ class ProfileConfigurationManager @Inject constructor(
             ProfileRuntimeSnapshot()
         }
         dao.replaceRuntimeState(
+            profileId = profileId,
             addons = snapshot.addons,
             catalogConfigs = snapshot.catalogConfigs,
             hubRows = snapshot.hubRows,
             hubRowItems = snapshot.hubRowItems,
-            watchHistory = snapshot.watchHistory
+            watchHistory = snapshot.watchHistory,
+            watchlist = snapshot.watchlist,
+            seriesNextUp = snapshot.seriesNextUp
         )
         stremioAuthManager.loadCredentialsForProfile(profileId)
         setLastActiveProfileId(profileId)
@@ -113,11 +120,16 @@ class ProfileConfigurationManager @Inject constructor(
 
     suspend fun initializeByCopying(targetProfileId: Int, sourceProfileId: Int) {
         captureStartupRuntimeIfNeeded()
-        val sourceSnapshot = readSnapshot(sourceProfileId) ?: captureRuntimeSnapshot().also {
+        val sourceSnapshot = readSnapshot(sourceProfileId) ?: captureRuntimeSnapshot(sourceProfileId).also {
             writeSnapshot(sourceProfileId, it)
             stremioAuthManager.saveCredentialsForProfile(sourceProfileId)
         }
-        writeSnapshot(targetProfileId, sourceSnapshot.copy(watchHistory = emptyList()))
+        // Copy configuration (addons, UI) but NOT personal progress (watchlist, history)
+        writeSnapshot(targetProfileId, sourceSnapshot.copy(
+            watchHistory = emptyList(),
+            watchlist = emptyList(),
+            seriesNextUp = emptyList()
+        ))
         stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
         copyProfileDisplayAndDashboardConfig(targetProfileId, sourceProfileId)
         clearPendingSetup(targetProfileId)
@@ -158,13 +170,15 @@ class ProfileConfigurationManager @Inject constructor(
         )
     }
 
-    private suspend fun captureRuntimeSnapshot(): ProfileRuntimeSnapshot {
+    private suspend fun captureRuntimeSnapshot(profileId: Int): ProfileRuntimeSnapshot {
         return ProfileRuntimeSnapshot(
             addons = dao.getAllAddons().firstOrNull() ?: emptyList(),
             catalogConfigs = dao.getAllCatalogConfigs().firstOrNull() ?: emptyList(),
             hubRows = dao.getAllHubRows().firstOrNull() ?: emptyList(),
             hubRowItems = dao.getAllHubRowItems().firstOrNull() ?: emptyList(),
-            watchHistory = dao.getWatchHistory().firstOrNull() ?: emptyList()
+            watchHistory = dao.getWatchHistory(profileId).firstOrNull() ?: emptyList(),
+            watchlist = dao.getWatchlist(profileId).firstOrNull() ?: emptyList(),
+            seriesNextUp = dao.getActiveSeriesNextUp(profileId).firstOrNull() ?: emptyList()
         )
     }
 
@@ -219,7 +233,9 @@ class ProfileConfigurationManager @Inject constructor(
             catalogConfigs = configs,
             hubRows = emptyList(),
             hubRowItems = emptyList(),
-            watchHistory = emptyList()
+            watchHistory = emptyList(),
+            watchlist = emptyList(),
+            seriesNextUp = emptyList()
         )
     }
 
