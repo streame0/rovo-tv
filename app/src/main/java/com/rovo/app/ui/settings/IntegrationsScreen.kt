@@ -321,7 +321,7 @@ private fun IntegrationItem(
 }
 
 // =============================================================================
-// CONNECT STREMIO DIALOG (Remote Pairing via QR Code)
+// CONNECT STREMIO DIALOG (Local Pairing via QR Code)
 // =============================================================================
 
 @Composable
@@ -348,7 +348,7 @@ private fun ConnectStremioDialog(
     val loginRequester = remember { FocusRequester() }
     val manualButtonRequester = remember { FocusRequester() }
 
-    // Create remote pairing session when dialog opens
+    // Create local pairing session when dialog opens
     LaunchedEffect(Unit) {
         delay(100)
 
@@ -361,7 +361,7 @@ private fun ConnectStremioDialog(
             serverInfo = info
             qrBitmap = generateQrCode(info.url)
         } else {
-            error = "Could not create pairing session. Check your network connection."
+            error = "Could not start local server. Check your network connection."
         }
     }
 
@@ -420,6 +420,26 @@ private fun ConnectStremioDialog(
                                     bitmap = qrBitmap!!.asImageBitmap(),
                                     contentDescription = "QR Code",
                                     modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            // PIN Display
+                            serverInfo!!.pin?.let { pin ->
+                                Text(
+                                    "Enter this PIN on your phone:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                                Text(
+                                    pin,
+                                    style = MaterialTheme.typography.headlineMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 8.sp
+                                    ),
+                                    color = Color.White,
+                                    modifier = Modifier.padding(top = 4.dp)
                                 )
                             }
 

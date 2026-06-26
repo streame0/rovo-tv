@@ -440,12 +440,13 @@ class TmdbMetadataService @Inject constructor(
                         .thenByDescending { it.type.equals("Teaser", ignoreCase = true) }
                         .thenByDescending { it.size ?: 0 }
                 )
-                .map { video ->
+                .mapNotNull { video ->
+                    val key = video.key?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                     TmdbVideoInfo(
                         name = video.name ?: "Trailer",
-                        key = video.key!!,
+                        key = key,
                         type = video.type ?: "Video",
-                        thumbnail = "https://img.youtube.com/vi/${video.key}/hqdefault.jpg"
+                        thumbnail = "https://img.youtube.com/vi/$key/hqdefault.jpg"
                     )
                 }
         } catch (e: Exception) {
@@ -506,11 +507,12 @@ class TmdbMetadataService @Inject constructor(
             )
             .firstOrNull()
             ?.let { video ->
+                val key = video.key?.takeIf { it.isNotBlank() } ?: return@let null
                 TmdbVideoInfo(
                     name = video.name ?: "Trailer",
-                    key = video.key!!,
+                    key = key,
                     type = video.type ?: "Trailer",
-                    thumbnail = "https://img.youtube.com/vi/${video.key}/hqdefault.jpg"
+                    thumbnail = "https://img.youtube.com/vi/$key/hqdefault.jpg"
                 )
             }
     }

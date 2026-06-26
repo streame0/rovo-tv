@@ -1739,8 +1739,7 @@ private fun VoidSliderButton(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null
-            ) { if (enabled) onClick() }
-            .focusable(interactionSource = interactionSource),
+            ) { if (enabled) onClick() },
         contentAlignment = Alignment.Center
     ) {
         Text(

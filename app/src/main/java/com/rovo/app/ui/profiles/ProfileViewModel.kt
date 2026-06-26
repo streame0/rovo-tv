@@ -94,8 +94,9 @@ class ProfileViewModel @Inject constructor(
     /**
      * Handles custom avatar upload from ImageUploadDialog.
      * Moves the file to the secure internal /avatars folder and updates tempAvatarRef.
+     * @param onComplete Called when the file operation completes with the updated avatarRef.
      */
-    fun handleAvatarUpload(tempFile: File, context: android.content.Context) {
+    fun handleAvatarUpload(tempFile: File, context: android.content.Context, onComplete: ((String) -> Unit)? = null) {
         viewModelScope.launch {
             val avatarsDir = File(context.filesDir, ProfileAssets.AVATARS_DIR).apply {
                 if (!exists()) mkdirs()
@@ -117,9 +118,7 @@ class ProfileViewModel @Inject constructor(
             if (targetFile.exists()) {
                 // Update tempAvatarRef with the custom path
                 tempAvatarRef = "${ProfileAssets.CUSTOM_PREFIX}${targetFile.absolutePath}"
-                // Proceed to next step automatically or let user confirm? 
-                // Usually for uploads, we proceed or show it's selected.
-                _wizardStep.value = 3 
+                onComplete?.invoke(tempAvatarRef)
             }
         }
     }

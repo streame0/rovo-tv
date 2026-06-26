@@ -15,6 +15,10 @@ import java.util.concurrent.TimeUnit
 
 class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
 
+    companion object {
+        private const val TAG = "TorrServerApi"
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
@@ -75,7 +79,9 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
             .build()
         try {
             client.newCall(request).execute().close()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.w(TAG, "dropTorrent failed", e)
+        }
     }
 
     fun getStreamUrl(magnetLink: String, fileIndex: Int): String {

@@ -7,6 +7,7 @@ import com.rovo.app.data.remote.TmdbApiService
 import com.rovo.app.data.remote.TraktApiService
 import com.rovo.app.data.remote.TraktSyncApiService
 import com.rovo.app.data.trakt.TraktAuthInterceptor
+import com.rovo.app.data.trakt.TraktAuthenticator
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -113,10 +114,12 @@ object NetworkModule {
     @TraktAuthenticatedRetrofit
     fun provideTraktAuthenticatedRetrofit(
         okHttpClient: OkHttpClient,
-        traktAuthInterceptor: TraktAuthInterceptor
+        traktAuthInterceptor: TraktAuthInterceptor,
+        traktAuthenticator: TraktAuthenticator
     ): Retrofit {
         val authenticatedClient = okHttpClient.newBuilder()
             .addInterceptor(traktAuthInterceptor)
+            .authenticator(traktAuthenticator)
             .build()
         return Retrofit.Builder()
             .baseUrl("https://api.trakt.tv/")

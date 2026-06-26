@@ -1,8 +1,14 @@
 package com.rovo.app.ui.details
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
@@ -12,6 +18,7 @@ import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,8 +34,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.rovo.app.ui.home.DpadRepeatGate
 import com.rovo.app.data.model.stremio.MetaVideo
@@ -165,7 +175,7 @@ fun GlassSidebar(
     GlassSidebarScaffold(
         visible = isVisible,
         onDismiss = onDismiss,
-        panelWidth = 620.dp
+        panelWidth = 560.dp
     ) {
         Crossfade(targetState = state, label = "Sidebar") { current ->
             when (current) {
@@ -236,10 +246,11 @@ fun EpisodesContent(
         Text("More Episodes", style = MaterialTheme.typography.headlineSmall, color = Color.White, modifier = Modifier.padding(bottom = 16.dp))
 
         if (seasons.isNotEmpty()) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
                 itemsIndexed(seasons.keys.toList()) { idx, num ->
                     SeasonTab(
                         number = num,
+                        episodeCount = seasons[num]?.size ?: 0,
                         isSelected = num == selectedSeason,
                         modifier = Modifier
                             .then(if (idx == 0) Modifier.onPreviewKeyEvent {
@@ -250,18 +261,16 @@ fun EpisodesContent(
                             .focusProperties { up = FocusRequester.Cancel },
                         onClick = {
                             selectedSeason = num
-                            // Only reset scroll to top when manually changing seasons
                             scope.launch { listState.scrollToItem(0) }
                         }
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
         }
 
         LazyColumn(
-            state = listState, // Using the hoisted state
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.dpadNavigation(onDismiss, trapLeft = false, repeatGate = repeatGate)
         ) {
             if (episodes.isEmpty()) item { Text("No episodes found.", color = Color.Gray) }
@@ -488,16 +497,56 @@ fun FilterDropdown(currentValue: String, options: List<String>, modifier: Modifi
 }
 
 @Composable
-fun SeasonTab(number: Int, isSelected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+fun SeasonTab(number: Int, episodeCount: Int, isSelected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     var isFocused by remember { mutableStateOf(false) }
     val primary = MaterialTheme.colorScheme.primary
-    Box(
-        modifier.clip(RoundedCornerShape(4.dp))
-            .background(if (isFocused) Color.White else if (isSelected) primary else Color.DarkGray)
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.05f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "seasonScale"
+    )
+
+    val bgColor = when {
+        isSelected -> primary
+        isFocused -> Color.White.copy(0.12f)
+        else -> Color.Transparent
+    }
+    val borderColor = when {
+        isSelected -> primary
+        isFocused -> primary.copy(0.6f)
+        else -> Color.White.copy(0.2f)
+    }
+    val textColor = when {
+        isSelected -> Color.Black
+        isFocused -> Color.White
+        else -> Color.White.copy(0.7f)
+    }
+
+    Row(
+        modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(RoundedCornerShape(20.dp))
+            .background(bgColor)
+            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
             .onFocusChanged { isFocused = it.isFocused }
-            .clickable(onClick = onClick).focusable().padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable(onClick = onClick)
+            .focusable()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text("Season $number", color = if (isSelected || isFocused) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge)
+        Text(
+            "Season $number",
+            color = textColor,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium)
+        )
+        if (episodeCount > 0) {
+            Text(
+                "· $episodeCount ep",
+                color = textColor.copy(alpha = 0.6f),
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
     }
 }
 
@@ -519,19 +568,13 @@ fun EpisodeItem(
     val primary = MaterialTheme.colorScheme.primary
     val thumbnailRequester = remember { FocusRequester() }
     val buttonRequester = remember { FocusRequester() }
-    val scope = rememberCoroutineScope()
 
-    // Counteract BringIntoView scroll when the mark button gets focus
-    LaunchedEffect(buttonFocused) {
-        if (buttonFocused && listState != null) {
-            val savedIndex = listState.firstVisibleItemIndex
-            val savedOffset = listState.firstVisibleItemScrollOffset
-            delay(50) // Wait for BringIntoView to execute
-            listState.scrollToItem(savedIndex, savedOffset) // Scroll back
-        }
-    }
+    val cardScale by animateFloatAsState(
+        targetValue = if (isFocused) 1.02f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "cardScale"
+    )
 
-    // Use TMDB data when available, fall back to addon data
     val title = enrichment?.title
         ?: episode.title.takeIf { it.isNotBlank() && it != "Episode" }
         ?: "Episode ${episode.episode}"
@@ -542,22 +585,31 @@ fun EpisodeItem(
         enrichment?.airDate ?: episode.released?.take(10)
     }
 
+    val cardBg = when {
+        isPlaying -> primary.copy(alpha = 0.08f)
+        isFocused -> Color.White.copy(alpha = 0.06f)
+        else -> Color.Transparent
+    }
+
     Row(
         Modifier
             .fillMaxWidth()
+            .graphicsLayer { scaleX = cardScale; scaleY = cardScale }
+            .background(cardBg, RoundedCornerShape(8.dp))
+            .then(if (isPlaying) Modifier.border(3.dp, primary.copy(alpha = 0.5f), RoundedCornerShape(8.dp)) else Modifier)
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.Top
     ) {
         // Thumbnail
         Box(
             thumbnailModifier
-                .width(200.dp)
+                .width(240.dp)
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .border(
                     if (thumbnailFocused) 2.dp else 0.dp,
                     if (thumbnailFocused) primary else Color.Transparent,
-                    RoundedCornerShape(6.dp)
+                    RoundedCornerShape(8.dp)
                 )
                 .focusRequester(thumbnailRequester)
                 .focusProperties { left = FocusRequester.Cancel; right = buttonRequester }
@@ -575,54 +627,76 @@ fun EpisodeItem(
                 Box(Modifier.fillMaxSize().background(Color.White.copy(0.08f)))
             }
 
-            // Darken thumbnail for watched episodes
+            // Watched overlay: desaturation + checkmark
             if (isWatched) {
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(0.4f)))
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(0.35f)))
+                Box(
+                    Modifier.align(Alignment.Center),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.Black.copy(0.6f))
+                    )
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Watched",
+                        tint = primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
 
-            // S:E label at bottom-left
+            // S:E badge — top-left
             Box(
                 Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(6.dp)
-                    .background(Color.Black.copy(0.7f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .background(Color.Black.copy(0.7f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
             ) {
                 Text(
-                    "S${episode.season} : E${episode.episode}",
-                    style = MaterialTheme.typography.labelSmall,
+                    "S${episode.season} · E${episode.episode}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = Color.White
                 )
             }
 
-            // Progress bar floating near bottom of thumbnail
+            // Progress bar at very bottom
             if (progress != null && progress > 0f && !isWatched) {
                 Box(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 5.dp)
                         .height(3.dp)
-                        .clip(RoundedCornerShape(1.5.dp))
-                        .background(Color.White.copy(0.3f))
+                        .clip(RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
+                        .background(Color.White.copy(0.25f))
                 ) {
                     Box(
                         Modifier
                             .fillMaxHeight()
                             .fillMaxWidth(progress.coerceIn(0f, 1f))
-                            .clip(RoundedCornerShape(1.5.dp))
                             .background(primary)
                     )
                 }
             }
         }
 
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(16.dp))
 
-        // Episode info with mark-as-watched button at bottom-right
-        Box(Modifier.weight(1f)) {
-            Column {
-                // Title
+        // Episode info
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(end = 8.dp)
+        ) {
+            // Title row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
                     title,
                     color = when {
@@ -630,54 +704,53 @@ fun EpisodeItem(
                         isFocused -> Color.White
                         else -> Color.White.copy(0.85f)
                     },
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                     maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-
-                // Synopsis
-                if (!overview.isNullOrBlank()) {
-                    Text(
-                        overview,
-                        color = Color.White.copy(0.5f),
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 4,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-
-                // Runtime + release date + status
-                Row(
-                    modifier = Modifier.padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (runtime != null) {
-                        Text(
-                            "(${runtime} min)",
-                            color = Color.White.copy(0.4f),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    if (releaseDate != null) {
-                        Text(
-                            releaseDate,
-                            color = Color.White.copy(0.35f),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    if (isPlaying) {
-                        Text(
-                            "Playing",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = primary
-                        )
-                    }
+                if (isPlaying) {
+                    PlayingBadge()
                 }
             }
 
-            // Mark as watched button — top-right
+            // Metadata row
+            Row(
+                modifier = Modifier.padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (runtime != null) {
+                    Text(
+                        "${runtime}m",
+                        color = Color.White.copy(0.4f),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+                if (releaseDate != null) {
+                    Text(
+                        releaseDate,
+                        color = Color.White.copy(0.35f),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+
+            // Synopsis
+            if (!overview.isNullOrBlank()) {
+                Text(
+                    overview,
+                    color = Color.White.copy(0.45f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            // Watched toggle — now properly placed below the text
             WatchedToggleButton(
                 isWatched = isWatched,
                 isFocused = buttonFocused,
@@ -685,9 +758,44 @@ fun EpisodeItem(
                 thumbnailRequester = thumbnailRequester,
                 onFocusChanged = { buttonFocused = it },
                 onClick = onToggleWatched,
-                modifier = Modifier.align(Alignment.TopEnd)
+                modifier = Modifier.align(Alignment.End)
             )
         }
+    }
+}
+
+@Composable
+private fun PlayingBadge() {
+    val primary = MaterialTheme.colorScheme.primary
+    val infiniteTransition = rememberInfiniteTransition(label = "playingPulse")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
+    Row(
+        modifier = Modifier
+            .background(primary.copy(alpha = alpha * 0.15f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            Modifier
+                .size(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(primary.copy(alpha = alpha))
+        )
+        Text(
+            "Playing",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+            color = primary
+        )
     }
 }
 

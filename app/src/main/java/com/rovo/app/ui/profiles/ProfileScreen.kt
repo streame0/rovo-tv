@@ -1069,8 +1069,9 @@ fun WizardAvatarStep(
         ImageUploadDialog(
             onDismissRequest = { showUploadDialog = false },
             onImageUploaded = { file ->
-                viewModel.handleAvatarUpload(file, context)
-                onNext(viewModel.tempAvatarRef)
+                viewModel.handleAvatarUpload(file, context) { avatarRef ->
+                    onNext(avatarRef)
+                }
             }
         )
     }

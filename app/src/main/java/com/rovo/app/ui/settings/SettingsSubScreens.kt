@@ -144,17 +144,17 @@ fun PersonalizationSettings(
         // HEADER
         Text(
             "Personalization",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 22.sp),
             color = Color.White
         )
         Text(
             "Customize your viewing experience.",
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = Color.White.copy(0.6f),
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+            color = Color.White.copy(0.5f),
             modifier = Modifier.padding(top = 4.dp)
         )
 
-        Spacer(Modifier.height(15.dp))
+        Spacer(Modifier.height(24.dp))
 
         // POSTER CORNERS
         SettingRow("Poster Corners") {
@@ -166,9 +166,7 @@ fun PersonalizationSettings(
                 blockUp = true
             )
         }
-        Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
-        Spacer(Modifier.height(15.dp))
+        Spacer(Modifier.height(10.dp))
 
         // HUB SHAPE
         SettingRow("Hub Shape") {
@@ -180,9 +178,7 @@ fun PersonalizationSettings(
                 blockUp = false
             )
         }
-        Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
-        Spacer(Modifier.height(15.dp))
+        Spacer(Modifier.height(10.dp))
 
         // CONTINUE WATCHING SHAPE
         SettingRow("Continue Watching") {
@@ -194,9 +190,7 @@ fun PersonalizationSettings(
                 blockUp = false
             )
         }
-        Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
-        Spacer(Modifier.height(15.dp))
+        Spacer(Modifier.height(10.dp))
 
         // MENU POSITION
         SettingRow("Menu Position") {
@@ -208,9 +202,7 @@ fun PersonalizationSettings(
                 blockUp = false
             )
         }
-        Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
-        Spacer(Modifier.height(15.dp))
+        Spacer(Modifier.height(10.dp))
 
         // SPLASH SCREEN
         SettingRow("Splash Screen") {
@@ -277,17 +269,17 @@ fun PlaybackSettings(
             // HEADER
             Text(
                 "Playback",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 22.sp),
                 color = Color.White
             )
             Text(
                 "Configure video decoding and display settings.",
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                color = Color.White.copy(0.6f),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                color = Color.White.copy(0.5f),
                 modifier = Modifier.padding(top = 4.dp)
             )
 
-            Spacer(Modifier.height(15.dp))
+            Spacer(Modifier.height(24.dp))
 
             // TUNNELED PLAYBACK
             SettingToggleRow(
@@ -603,11 +595,10 @@ fun SettingToggleRow(
         if (isFocused) onFocus()
     }
 
-    val scale by animateFloatAsState(if (isFocused) 1.02f else 1f)
+    val scale by animateFloatAsState(if (isFocused) 1.01f else 1f)
     val borderColor by animateColorAsState(
         when {
-            isFocused -> Color.White
-            isChecked -> accentColor.copy(0.5f)
+            isFocused -> Color.White.copy(0.3f)
             else -> Color.Transparent
         }
     )
@@ -629,17 +620,16 @@ fun SettingToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(52.dp)
             .then(backModifier)
             .then(upBlockModifier)
             .scale(scale)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(0.05f))
-            .border(if (isFocused || isChecked) 1.dp else 0.dp, borderColor, RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(0.04f))
+            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
             .clickable(interactionSource = interactionSource, indication = null) {
                 onCheckedChange(!isChecked)
             }
-            .focusable(interactionSource = interactionSource)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -648,9 +638,9 @@ fun SettingToggleRow(
             Text(
                 text = label,
                 color = when {
-                    isChecked -> accentColor
                     isFocused -> Color.White
-                    else -> Color.White.copy(0.8f)
+                    isChecked -> Color.White.copy(0.9f)
+                    else -> Color.White.copy(0.7f)
                 },
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Medium,
@@ -660,22 +650,32 @@ fun SettingToggleRow(
             if (subtitle != null) {
                 Text(
                     text = subtitle,
-                    color = Color.White.copy(0.4f),
+                    color = Color.White.copy(0.35f),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                 )
             }
         }
-        Checkbox(
-            checked = isChecked,
-            onCheckedChange = null,
-            colors = CheckboxDefaults.colors(
-                checkedColor = accentColor,
-                uncheckedColor = if (isFocused) Color.White.copy(0.7f) else Color.White.copy(0.3f),
-                checkmarkColor = Color.White
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (isChecked) accentColor.copy(0.15f) else Color.White.copy(0.06f))
+                .border(
+                    1.dp,
+                    if (isChecked) accentColor.copy(0.5f) else Color.White.copy(0.1f),
+                    RoundedCornerShape(10.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = if (isChecked) accentColor else Color.Transparent,
+                modifier = Modifier.size(20.dp)
             )
-        )
+        }
     }
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(4.dp))
 }
 
 @Composable
@@ -716,7 +716,6 @@ fun SettingToggleChip(
             .clickable(interactionSource = interactionSource, indication = null) {
                 onCheckedChange(!isChecked)
             }
-            .focusable(interactionSource = interactionSource)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -758,109 +757,135 @@ fun <T> SettingOptionRow(
     onFocus: () -> Unit = {}
 ) {
     val accentColor = MaterialTheme.colorScheme.primary
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
 
-    val backModifier = if (onBack != null) {
-        Modifier.onPreviewKeyEvent {
-            if (it.key == Key.DirectionLeft && it.type == KeyEventType.KeyDown) {
-                onBack(); true
-            } else false
+    LaunchedEffect(isFocused) {
+        if (isFocused) onFocus()
+    }
+
+    val selectedIndex = options.indexOfFirst { it.second == selectedOption }.coerceAtLeast(0)
+
+    val keyHandler = Modifier.onPreviewKeyEvent {
+        when {
+            it.key == Key.DirectionRight && it.type == KeyEventType.KeyDown -> {
+                val next = (selectedIndex + 1) % options.size
+                onOptionSelected(options[next].second)
+                true
+            }
+            it.key == Key.DirectionLeft && it.type == KeyEventType.KeyDown -> {
+                if (selectedIndex > 0) {
+                    onOptionSelected(options[selectedIndex - 1].second)
+                } else {
+                    onBack?.invoke()
+                }
+                true
+            }
+            it.key == Key.DirectionUp && blockUp && it.type == KeyEventType.KeyDown -> true
+            else -> false
         }
-    } else Modifier
+    }
 
-    val upBlockModifier = if (blockUp) {
-        Modifier.onPreviewKeyEvent {
-            it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown
-        }
-    } else Modifier
+    val scale by animateFloatAsState(if (isFocused) 1.01f else 1f)
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(0.05f))
-            .padding(start = 16.dp, end = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .scale(scale)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(if (isFocused) 0.08f else 0.04f))
+            .border(1.dp, if (isFocused) Color.White.copy(0.3f) else Color.Transparent, RoundedCornerShape(10.dp))
+            .then(keyHandler)
+            .clickable(interactionSource = interactionSource, indication = null) {
+                val next = (selectedIndex + 1) % options.size
+                onOptionSelected(options[next].second)
+            }
+            .padding(16.dp)
     ) {
         Text(
             text = label,
-            color = Color.White.copy(0.8f),
             style = MaterialTheme.typography.bodyLarge.copy(
                 fontWeight = FontWeight.Medium,
-                fontSize = 15.sp
+                fontSize = 14.sp
             ),
-            modifier = Modifier.weight(1f)
+            color = if (isFocused) Color.White else Color.White.copy(0.6f),
+            modifier = Modifier.padding(bottom = 10.dp)
         )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            options.forEachIndexed { index, (optionLabel, value) ->
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            options.forEachIndexed { index, (optLabel, value) ->
                 val isSelected = selectedOption == value
-                val interactionSource = remember { MutableInteractionSource() }
-                val isFocused by interactionSource.collectIsFocusedAsState()
-
-                LaunchedEffect(isFocused) {
-                    if (isFocused) onFocus()
-                }
-
-                val scale by animateFloatAsState(if (isFocused) 1.06f else 1f)
-                val chipBorder by animateColorAsState(
-                    when {
-                        isFocused -> Color.White
-                        isSelected -> accentColor
-                        else -> Color.White.copy(0.15f)
-                    }
+                SettingOptionChip(
+                    label = optLabel,
+                    isSelected = isSelected,
+                    isParentFocused = isFocused
                 )
-                val chipTextColor = when {
-                    isSelected -> accentColor
-                    isFocused -> Color.White
-                    else -> Color.White.copy(0.6f)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .height(32.dp)
-                        .then(if (index == 0) backModifier else Modifier)
-                        .then(if (index == 0) upBlockModifier else Modifier)
-                        .scale(scale)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isSelected) accentColor.copy(0.1f) else Color.Transparent)
-                        .border(
-                            if (isFocused || isSelected) 1.5.dp else 1.dp,
-                            chipBorder,
-                            RoundedCornerShape(6.dp)
-                        )
-                        .clickable(interactionSource = interactionSource, indication = null) {
-                            onOptionSelected(value)
-                        }
-                        .focusable(interactionSource = interactionSource)
-                        .padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = optionLabel,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                            fontSize = 13.sp
-                        ),
-                        color = chipTextColor
-                    )
-                }
             }
         }
     }
-    Spacer(Modifier.height(6.dp))
+}
+
+@Composable
+private fun SettingOptionChip(
+    label: String,
+    isSelected: Boolean,
+    isParentFocused: Boolean = false
+) {
+    val accentColor = MaterialTheme.colorScheme.primary
+
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                when {
+                    isSelected && isParentFocused -> accentColor.copy(0.2f)
+                    isSelected -> accentColor.copy(0.12f)
+                    else -> Color.White.copy(0.04f)
+                }
+            )
+            .border(
+                1.dp,
+                when {
+                    isSelected && isParentFocused -> accentColor
+                    isSelected -> accentColor.copy(0.6f)
+                    else -> Color.White.copy(0.1f)
+                },
+                RoundedCornerShape(8.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = when {
+                isSelected -> accentColor
+                else -> Color.White.copy(0.7f)
+            },
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                fontSize = 13.sp
+            )
+        )
+    }
 }
 
 @Composable
 fun SettingRow(label: String, content: @Composable () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(0.04f))
+            .padding(16.dp)
+    ) {
         Text(
             text = label,
             style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.SemiBold, 
-                fontSize = 18.sp
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp
             ),
-            color = Color.White,
+            color = Color.White.copy(0.9f),
             modifier = Modifier.padding(bottom = 12.dp)
         )
         content()
@@ -880,14 +905,16 @@ fun <T> VoidSegmentedControl(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(40.dp)
+            .height(44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(0.06f))
+            .padding(3.dp)
             .then(modifier),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         options.forEachIndexed { index, (label, value) ->
             val isSelected = selectedOption == value
-            
-            // Logic: Only the first item handles "Back" on Left Arrow.
+
             val backModifier = if (index == 0 && onBack != null) {
                 Modifier.onPreviewKeyEvent {
                     if (it.key == Key.DirectionLeft && it.type == KeyEventType.KeyDown) {
@@ -896,17 +923,15 @@ fun <T> VoidSegmentedControl(
                     } else false
                 }
             } else Modifier
-            
-            // Block Up navigation only if blockUp is true
+
             val upBlockModifier = if (blockUp) {
                 Modifier.onPreviewKeyEvent {
                     if (it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown) {
-                        true // Consume the event to block focus escape
+                        true
                     } else false
                 }
             } else Modifier
 
-            // SegmentItem is now a RowScope extension, weight applied inside
             SegmentItem(
                 label = label,
                 isSelected = isSelected,
@@ -928,47 +953,47 @@ fun RowScope.SegmentItem(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
+    val accentColor = MaterialTheme.colorScheme.primary
 
     LaunchedEffect(isFocused) {
         if (isFocused) onFocus()
     }
-    
-    val scale by animateFloatAsState(if (isFocused) 1.04f else 1f)
 
-    val bgColor = Color.White.copy(0.05f)
-    val textColor = when {
-        isSelected -> MaterialTheme.colorScheme.primary
-        isFocused -> Color.White
-        else -> Color.White.copy(0.7f)
-    }
-    
-    val borderColor by animateColorAsState(
+    val bgColor by animateColorAsState(
         when {
-            isFocused -> Color.White
-            isSelected -> MaterialTheme.colorScheme.primary
+            isSelected -> accentColor.copy(0.2f)
+            isFocused -> Color.White.copy(0.08f)
             else -> Color.Transparent
-        }
+        },
+        label = "SegBg"
     )
-    val borderWidth = if (isFocused || isSelected) 2.dp else 0.dp
+
+    val textColor by animateColorAsState(
+        when {
+            isSelected -> accentColor
+            isFocused -> Color.White
+            else -> Color.White.copy(0.5f)
+        },
+        label = "SegText"
+    )
 
     Box(
         modifier = Modifier
             .weight(1f)
-            .widthIn(min = 100.dp)
             .fillMaxHeight()
             .then(keyModifier)
-            .scale(scale)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
-            .border(borderWidth, borderColor, RoundedCornerShape(6.dp))
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
-            .focusable(interactionSource = interactionSource)
-            .padding(horizontal = 12.dp),
+            .focusable(interactionSource = interactionSource),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = 13.sp
+            ),
             color = textColor
         )
     }
@@ -1434,7 +1459,6 @@ private fun SettingLanguageRow(
                 RoundedCornerShape(8.dp)
             )
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
-            .focusable(interactionSource = interactionSource)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -1584,17 +1608,17 @@ fun SourcePreferencesSettings(
         // HEADER
         Text(
             "Sort & Filter",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 22.sp),
             color = Color.White
         )
         Text(
             "Configure how sources are sorted and filtered.",
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = Color.White.copy(0.6f),
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+            color = Color.White.copy(0.5f),
             modifier = Modifier.padding(top = 4.dp)
         )
 
-        Spacer(Modifier.height(15.dp))
+        Spacer(Modifier.height(24.dp))
 
         // ENABLE SORTING
         SettingToggleRow(
@@ -1862,17 +1886,17 @@ fun AboutSettings(
         // HEADER
         Text(
             "About",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 22.sp),
             color = Color.White
         )
         Text(
             "App information and updates.",
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = Color.White.copy(0.6f),
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+            color = Color.White.copy(0.5f),
             modifier = Modifier.padding(top = 4.dp)
         )
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(24.dp))
 
         // VERSION ROW
         Row(

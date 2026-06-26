@@ -361,34 +361,10 @@ private fun PosterCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val roundCorners = LocalRoundCorners.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-    val cardShape = if (roundCorners) RoundedCornerShape(if (isFocused) 16.dp else 12.dp) else RectangleShape
-    val scale by animateFloatAsState(if (isFocused) 1.05f else 1f, label = "posterScale")
-
-    Box(
-        modifier = modifier
-            .width(120.dp)
-            .height(180.dp)
-            .scale(scale)
-            .clip(cardShape)
-            .background(Color.White.copy(0.06f))
-            .border(
-                width = if (isFocused) 2.dp else 0.dp,
-                color = if (isFocused) accentColor else Color.Transparent,
-                shape = cardShape
-            )
-            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
-            .focusable(interactionSource = interactionSource)
-    ) {
-        if (item.poster != null) {
-            AsyncImage(
-                model = item.poster,
-                contentDescription = item.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().clip(cardShape)
-            )
-        }
-    }
+    com.rovo.app.ui.components.PosterCard(
+        item = item,
+        accentColor = accentColor,
+        modifier = modifier,
+        onClick = onClick
+    )
 }

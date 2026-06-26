@@ -80,7 +80,9 @@ class TorrServerEngine @Inject constructor(
                     proc?.inputStream?.bufferedReader()?.forEachLine { line ->
                         Log.v(TAG, "TorrServer: $line")
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    if (BuildConfig.DEBUG) Log.w(TAG, "TorrServer log reader error", e)
+                }
             }, "torrserver-log").apply { isDaemon = true }.start()
         }
 
@@ -117,7 +119,9 @@ class TorrServerEngine @Inject constructor(
                 .build()
             try {
                 httpClient.newCall(request).execute().close()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.w(TAG, "Shutdown request failed", e)
+            }
 
             process?.let { proc ->
                 // Wait for graceful exit

@@ -12,7 +12,8 @@ import java.net.BindException
 data class ServerInfo(
     val ip: String,
     val port: Int,
-    val pairingUrl: String? = null
+    val pairingUrl: String? = null,
+    val pin: String? = null
 ) {
     val url: String get() = pairingUrl ?: "http://$ip:$port"
 }
@@ -47,7 +48,7 @@ class ServerManager(private val context: android.content.Context) {
                     registerService(port, "Rovo-TV-Paste-${System.currentTimeMillis() % 1000}")
                 }
 
-                return@withContext ServerInfo(ip ?: "127.0.0.1", port)
+                return@withContext ServerInfo(ip ?: "127.0.0.1", port, pin = linkServer.pin)
             } catch (e: BindException) {
                 continue
             } catch (e: Exception) {

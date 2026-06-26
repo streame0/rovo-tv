@@ -173,14 +173,16 @@ class AppUpdateManager @Inject constructor(
             }
         }
 
-        // Verify checksum if one was provided in the release notes
+        // Verify checksum — mandatory, fail if missing
         val expectedHash = extractSha256FromBody(lastReleaseBody)
-        if (expectedHash != null) {
-            val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
-            if (!actualHash.equals(expectedHash, ignoreCase = true)) {
+            ?: run {
                 apkFile.delete()
-                throw SecurityException("APK checksum mismatch — file may be tampered")
+                throw SecurityException("Release has no SHA-256 checksum — refusing to install")
             }
+        val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
+        if (!actualHash.equals(expectedHash, ignoreCase = true)) {
+            apkFile.delete()
+            throw SecurityException("APK checksum mismatch — file may be tampered")
         }
 
         return apkFile

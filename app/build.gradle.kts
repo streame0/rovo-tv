@@ -30,8 +30,8 @@ android {
         applicationId = "com.rovo.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "1.2" //app vesion
+        versionCode = 12
+        versionName = "1.3" //app vesion
 
         // GitHub repository for auto-update system
         buildConfigField("String", "GITHUB_OWNER", "\"streame0\"")
@@ -174,7 +174,7 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // --- CRASH REPORTING (ACRA) ---
-    implementation("ch.acra:acra-http:5.11.4")
-    implementation("ch.acra:acra-toast:5.11.4")
+    implementation("ch.acra:acra-http:5.12.0")
+    implementation("ch.acra:acra-toast:5.12.0")
 
 }

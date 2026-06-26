@@ -15,6 +15,7 @@ import java.util.UUID
 class ImageUploadServer(
     port: Int,
     private val tempFolder: File,
+    val pin: String = (1000..9999).random().toString(),
     private val onImageUploaded: (File) -> Unit
 ) : NanoHTTPD(port) {
 
@@ -23,6 +24,7 @@ class ImageUploadServer(
 
     companion object {
         private const val TAG = "ImageUploadServer"
+        private const val MAX_IMAGE_SIZE = 5 * 1024 * 1024L // 5 MB
     }
 
     override fun serve(session: IHTTPSession): Response {
@@ -144,6 +146,13 @@ class ImageUploadServer(
 
                         <form id="imageForm">
                             <input type="hidden" name="csrf_token" value="$csrfToken">
+                            <input type="text" name="pin" id="pinInput"
+                                   placeholder="Enter PIN from TV"
+                                   inputmode="numeric"
+                                   pattern="[0-9]{4}"
+                                   maxlength="4"
+                                   autocomplete="off"
+                                   required>
                             <input type="file" id="fileInput" name="image" accept="image/*" required>
                             <button type="submit" id="submitBtn" disabled>Upload to TV</button>
                         </form>
@@ -225,12 +234,20 @@ class ImageUploadServer(
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 
-            // NanoHTTPD stores uploaded files in a map where the key is the field name
-            // and the value is the path to a temporary file.
+            // Validate PIN
+            val submittedPin = session.parms["pin"]
+            if (submittedPin != pin) {
+                return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid PIN")
+            }
+
             val tempFilePath = files["image"] ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No image found")
             val tempFile = File(tempFilePath)
-            
-            // Create a more permanent temporary file in our app's cache
+
+            if (!tempFile.exists() || tempFile.length() > MAX_IMAGE_SIZE) {
+                tempFile.delete()
+                return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "File too large or missing")
+            }
+
             val targetFile = File(tempFolder, "upload_${System.currentTimeMillis()}.jpg")
             tempFile.copyTo(targetFile, overwrite = true)
 

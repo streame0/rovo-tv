@@ -322,49 +322,71 @@ fun SettingsSidebarItem(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
+    val accentColor = MaterialTheme.colorScheme.primary
 
     LaunchedEffect(isFocused) {
         if (isFocused) onFocus()
     }
 
-    // Visual logic (like VoidTabBtn):
-    // - If focused: full highlight (white text)
-    // - If selected but not focused: partial highlight (white text)
     val showHighlight = isFocused || isSelected
-    
+
     val contentColor by animateColorAsState(
-        if (showHighlight) Color.White else Color.White.copy(0.4f), 
+        when {
+            isFocused -> Color.White
+            isSelected -> Color.White.copy(0.9f)
+            else -> Color.White.copy(0.4f)
+        },
         label = "Content"
     )
-    
-    // Scale only when focused
-    val scale by animateFloatAsState(if (isFocused) 1.05f else 1f)
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Start,
+    val iconColor by animateColorAsState(
+        when {
+            isFocused -> accentColor
+            isSelected -> accentColor.copy(0.8f)
+            else -> Color.White.copy(0.35f)
+        },
+        label = "Icon"
+    )
+
+    val bgColor by animateColorAsState(
+        if (isFocused) Color.White.copy(0.06f) else Color.Transparent,
+        label = "Bg"
+    )
+
+    val scale by animateFloatAsState(if (isFocused) 1.02f else 1f)
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .scale(scale)
-            .then(modifier)
-            .focusable(interactionSource = interactionSource)
-            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
-            .padding(vertical = 12.dp, horizontal = 16.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(bgColor)
     ) {
-        Icon(
-            painter = painterResource(id = iconRes), 
-            contentDescription = null, 
-            tint = contentColor, 
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(Modifier.width(16.dp))
-        Text(
-            text = label, 
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 16.sp,
-                fontWeight = if (showHighlight) FontWeight.SemiBold else FontWeight.Normal
-            ), 
-            color = contentColor
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start,
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(modifier)
+                .focusable(interactionSource = interactionSource)
+                .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+                .padding(vertical = 14.dp, horizontal = 16.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = iconRes),
+                contentDescription = null,
+                tint = iconColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(14.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 15.sp,
+                    fontWeight = if (showHighlight) FontWeight.SemiBold else FontWeight.Normal
+                ),
+                color = contentColor
+            )
+        }
     }
 }

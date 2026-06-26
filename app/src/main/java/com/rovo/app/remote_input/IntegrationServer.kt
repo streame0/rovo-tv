@@ -13,6 +13,7 @@ import java.util.UUID
  */
 class IntegrationServer(
     port: Int,
+    val pin: String = (1000..9999).random().toString(),
     private val onCredentialsReceived: (email: String, password: String) -> Unit
 ) : NanoHTTPD(port) {
 
@@ -179,6 +180,13 @@ class IntegrationServer(
                         
                         <form id="loginForm">
                             <input type="hidden" name="csrf_token" value="$csrfToken">
+                            <input type="text" name="pin" id="pinInput"
+                                   placeholder="Enter PIN from TV"
+                                   inputmode="numeric"
+                                   pattern="[0-9]{4}"
+                                   maxlength="4"
+                                   autocomplete="off"
+                                   required>
                             <input type="email" name="email" id="emailInput"
                                    placeholder="Stremio Email"
                                    autocomplete="email"
@@ -261,6 +269,12 @@ class IntegrationServer(
             val token = session.parms["csrf_token"]
             if (token != csrfToken) {
                 return jsonResponse(false, "Invalid request")
+            }
+
+            // Validate PIN
+            val submittedPin = session.parms["pin"]
+            if (submittedPin != pin) {
+                return jsonResponse(false, "Invalid PIN")
             }
 
             val email = session.parms["email"]

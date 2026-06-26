@@ -25,16 +25,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.qrcode.QRCodeWriter
 import com.rovo.app.remote_input.ImageUploadServerManager
 import com.rovo.app.remote_input.ServerInfo
 import kotlinx.coroutines.delay
 import java.io.File
 
 /**
- * Dialog that displays a QR code for remote image upload.
- * Creates a remote pairing session and shows QR code pointing to the hosted page.
+ * Dialog that displays a QR code for local image upload.
+ * Creates a local server and shows QR code pointing to the TV's local IP.
  */
 @Composable
 fun ImageUploadDialog(
@@ -65,7 +63,7 @@ fun ImageUploadDialog(
             serverInfo = info
             qrBitmap = generateQrCode(info.url)
         } else {
-            error = "Could not create pairing session. Check network."
+            error = "Could not start local server. Check your network."
         }
     }
 
@@ -126,7 +124,27 @@ fun ImageUploadDialog(
                             )
                         }
                         
-                        Spacer(Modifier.height(24.dp))
+                        Spacer(Modifier.height(16.dp))
+                        
+                        // PIN Display
+                        serverInfo!!.pin?.let { pin ->
+                            Text(
+                                "Enter this PIN on your phone:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                            Text(
+                                pin,
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 8.sp
+                                ),
+                                color = Color.White,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        
+                        Spacer(Modifier.height(16.dp))
                         
                         // Manual URL
                         Text(
@@ -152,36 +170,12 @@ fun ImageUploadDialog(
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "Creating pairing session...",
+                            "Starting local server...",
                             color = Color.Gray
                         )
                     }
                 }
             }
         }
-    }
-}
-
-/**
- * Generates a QR code bitmap for the given URL.
- */
-private fun generateQrCode(url: String, size: Int = 512): Bitmap? {
-    return try {
-        val writer = QRCodeWriter()
-        val bitMatrix = writer.encode(url, BarcodeFormat.QR_CODE, size, size)
-        
-        val width = bitMatrix.width
-        val height = bitMatrix.height
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-        
-        for (x in 0 until width) {
-            for (y in 0 until height) {
-                bitmap.setPixel(x, y, if (bitMatrix[x, y]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
-            }
-        }
-        
-        bitmap
-    } catch (e: Exception) {
-        null
     }
 }

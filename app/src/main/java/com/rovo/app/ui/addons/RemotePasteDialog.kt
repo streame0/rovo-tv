@@ -23,8 +23,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.qrcode.QRCodeWriter
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalContext
 import com.rovo.app.remote_input.NetworkUtils
@@ -137,6 +135,24 @@ fun RemotePasteDialog(
                     modifier = Modifier.padding(top = 8.dp)
                 )
 
+                if (serverInfo?.pin != null) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "PIN: ${serverInfo!!.pin}",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 8.sp
+                        ),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        "Enter this code on your phone",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
                 Spacer(Modifier.height(32.dp))
 
                 when {
@@ -196,30 +212,5 @@ fun RemotePasteDialog(
                 }
             }
         }
-    }
-}
-
-/**
- * Generates a QR code bitmap for the given URL.
- */
-private fun generateQrCode(url: String, size: Int = 512): Bitmap? {
-    return try {
-        val writer = QRCodeWriter()
-        val bitMatrix = writer.encode(url, BarcodeFormat.QR_CODE, size, size)
-        
-        val width = bitMatrix.width
-        val height = bitMatrix.height
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-        
-        for (x in 0 until width) {
-            for (y in 0 until height) {
-                bitmap.setPixel(x, y, if (bitMatrix[x, y]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
-            }
-        }
-        
-        bitmap
-    } catch (e: Exception) {
-        if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("RemotePasteDialog", "QR generation error", e)
-        null
     }
 }

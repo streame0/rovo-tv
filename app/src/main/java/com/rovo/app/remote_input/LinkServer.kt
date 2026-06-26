@@ -12,7 +12,8 @@ import java.util.UUID
  */
 class LinkServer(
     port: Int,
-    private val onLinkReceived: (String) -> Unit
+    private val onLinkReceived: (String) -> Unit,
+    val pin: String = (1000..9999).random().toString()
 ) : NanoHTTPD(port) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -125,6 +126,13 @@ class LinkServer(
                     <p>Paste your addon URL below and tap Send</p>
                     <form id="pasteForm">
                         <input type="hidden" name="csrf_token" value="$csrfToken">
+                        <input type="text" name="pin" id="pinInput"
+                               placeholder="Enter PIN from TV"
+                               inputmode="numeric"
+                               pattern="[0-9]{4}"
+                               maxlength="4"
+                               autocomplete="off"
+                               required>
                         <input type="url" name="url" id="urlInput"
                                placeholder="https://..."
                                autocomplete="off"
@@ -151,7 +159,13 @@ class LinkServer(
                         try {
                             const formData = new FormData(document.getElementById('pasteForm'));
                             const res = await fetch('/', { method: 'POST', body: formData });
-                            if (!res.ok) throw new Error('Server rejected the request');
+                            const result = await res.json().catch(() => ({ success: res.ok }));
+                            if (result.success === false) {
+                                btn.disabled = false;
+                                btn.textContent = 'Send to TV';
+                                alert(result.error || 'Invalid PIN. Check the code on your TV.');
+                                return;
+                            }
                             document.getElementById('form-container').style.display = 'none';
                             document.getElementById('success-container').style.display = 'block';
                         } catch (err) {
@@ -180,6 +194,12 @@ class LinkServer(
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 
+            // Validate PIN
+            val submittedPin = session.parms["pin"]
+            if (submittedPin != pin) {
+                return jsonResponse(mapOf("success" to false, "error" to "Invalid PIN"))
+            }
+
             val url = session.parms["url"]
 
             if (!url.isNullOrBlank()) {
@@ -198,5 +218,10 @@ class LinkServer(
             if (com.rovo.app.BuildConfig.DEBUG) android.util.Log.w("LinkServer", "Error handling submission", e)
             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Error processing request")
         }
+    }
+
+    private fun jsonResponse(data: Map<String, Any>): Response {
+        val json = org.json.JSONObject(data).toString()
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json)
     }
 }

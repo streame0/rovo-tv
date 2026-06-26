@@ -133,7 +133,9 @@ class TorrentService : Service() {
                                 )
                             )
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        if (BuildConfig.DEBUG) Log.w(TAG, "Progress callback failed", e)
+                    }
                 }
             } catch (e: CancellationException) {
                 if (BuildConfig.DEBUG) Log.d(TAG, "Download coroutine cancelled")
